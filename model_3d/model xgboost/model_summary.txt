@@ -1,0 +1,31 @@
+=== RÉSUMÉ DU MODÈLE XGBOOST - PATH LOSS INDOOR (STRUCTURE MODEL_INFO) ===
+
+Date de création : 2025-07-10 00:34:07
+
+PERFORMANCE DU MODÈLE (COLONNES ORIGINALES UNIQUEMENT) :
+  • RMSE Test : 16.081 dB
+  • MAE Test : 8.992 dB
+  • R² Test : 0.8662
+
+FEATURES UTILISÉES (4 COLONNES ORIGINALES) :
+  • distance (importance: 0.061)
+  • numwall (importance: 0.321)
+  • etage (importance: 0.612)
+  • frequence (importance: 0.006)
+
+INFORMATIONS DATASET :
+  • Échantillons total : 200000
+  • Taille train : 160000
+  • Taille test : 40000
+
+CONFIGURATION :
+  • Type de modèle : XGBoost Regressor
+  • Feature Engineering : NON
+  • Notes : Modèle utilisant uniquement les 4 colonnes originales du dataset
+
+EXEMPLES DE PRÉDICTIONS :
+  • 5m, LOS, 2.4GHz                    : 52.9 dB
+  • 20m, 2 murs, 2.4GHz                : 100.5 dB
+  • 10m, 1 étage, 5GHz                 : 100.0 dB
+  • 50m, 5 murs, 2 étages, 2.4GHz      : 171.2 dB
+  • 100m, 8 murs, 3 étages, 5GHz       : 228.9 dB
