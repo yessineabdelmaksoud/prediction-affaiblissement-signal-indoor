@@ -252,52 +252,6 @@ class HeatmapGenerator:
         
         return stats
     
-    def generate_recommendations(self, stats, nb_emetteurs):
-        """
-        Génère des recommandations d'optimisation.
-        
-        Args:
-            stats: Statistiques de couverture
-            nb_emetteurs: Nombre d'émetteurs actuels
-            
-        Returns:
-            recommendations: Liste de recommandations
-        """
-        recommendations = []
-        
-        # Analyse de la couverture globale
-        bonne_couverture = stats['excellent'] + stats['bon']
-        
-        if bonne_couverture < 60:
-            recommendations.append("La couverture globale est insuffisante (< 60%). Considérez augmenter la puissance des émetteurs ou ajouter des points d'accès.")
-        
-        if stats['mauvaise'] > 30:
-            recommendations.append("Trop de zones avec une mauvaise couverture. Repositionnez les émetteurs ou ajoutez des répéteurs.")
-        
-        if stats['excellent'] < 20:
-            recommendations.append("Peu de zones avec une excellente couverture. Optimisez le placement des antennes.")
-        
-        # Recommandations spécifiques au nombre d'émetteurs
-        if nb_emetteurs == 1:
-            if stats['mauvaise'] > 20:
-                recommendations.append("Avec un seul émetteur, considérez ajouter un second point d'accès pour améliorer la couverture.")
-        
-        if nb_emetteurs > 3:
-            recommendations.append("Avec plusieurs émetteurs, vérifiez les interférences potentielles entre canaux.")
-        
-        # Recommandations par fréquence
-        if self.frequency_mhz > 5000:
-            recommendations.append("Fréquence 5+ GHz: Bonne pour la capacité mais portée limitée. Rapprochez les émetteurs si nécessaire.")
-        elif self.frequency_mhz < 1000:
-            recommendations.append("Fréquence < 1 GHz: Bonne portée mais vérifiez les interférences avec d'autres équipements.")
-        
-        # Recommandations générales
-        if len(recommendations) == 0:
-            recommendations.append("La configuration actuelle semble optimale pour cette fréquence et cette disposition.")
-        
-        recommendations.append("Effectuez des mesures réelles pour valider cette simulation.")
-        
-        return recommendations
     
     def export_data_csv(self, heatmap_data, extent):
         """

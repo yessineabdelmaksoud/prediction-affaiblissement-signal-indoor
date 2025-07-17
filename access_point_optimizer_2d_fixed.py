@@ -7,6 +7,8 @@ import pandas as pd
 import io
 from pathloss_calculator import PathlossCalculator
 from image_processor import ImageProcessor
+from gmm_optimizer import GMMOptimizer
+from greedy_optimizer import GreedyOptimizer
 
 class AccessPointOptimizer2D:
     def __init__(self, frequency_mhz):
@@ -19,6 +21,8 @@ class AccessPointOptimizer2D:
         self.frequency_mhz = frequency_mhz
         self.calculator = PathlossCalculator(frequency_mhz)
         self.processor = ImageProcessor()
+        self.gmm_optimizer = GMMOptimizer()
+        self.greedy_optimizer = GreedyOptimizer(frequency_mhz * 1e6)  # Conversion MHz vers Hz
         
     def generate_coverage_grid_2d(self, walls_detected, longueur, largeur, resolution=25):
         """
@@ -599,3 +603,329 @@ class AccessPointOptimizer2D:
         output.close()
         
         return csv_data
+    
+    def optimize_with_algorithm_choice_2d(self, coverage_points, grid_info, longueur, largeur,
+                                         target_coverage_db=-70.0, min_coverage_percent=90.0,
+                                         power_tx=20.0, max_access_points=6, algorithm='kmeans'):
+        """
+        Optimise le placement des points d'accès 2D avec choix d'algorithme.
+        
+        Args:
+            coverage_points: Points à couvrir
+            grid_info: Informations sur la grille
+            longueur, largeur: Dimensions
+            target_coverage_db: Signal minimal requis
+            min_coverage_percent: Couverture minimale
+            power_tx: Puissance de transmission
+            max_access_points: Nombre maximal de points d'accès
+            algorithm: 'kmeans', 'gmm' ou 'greedy' - algorithme d'optimisation à utiliser
+            
+        Returns:
+            best_config: Meilleure configuration trouvée
+            analysis: Analyse de l'algorithme utilisé
+        """
+        if algorithm.lower() == 'gmm':
+            return self._optimize_with_gmm_2d(
+                coverage_points, grid_info, longueur, largeur,
+                target_coverage_db, min_coverage_percent, power_tx, max_access_points
+            )
+        elif algorithm.lower() == 'greedy':
+            return self._optimize_with_greedy_2d(
+                coverage_points, grid_info, longueur, largeur,
+                target_coverage_db, min_coverage_percent, power_tx, max_access_points
+            )
+        elif algorithm.lower() == 'kmeans':
+            return self.optimize_with_clustering_2d(
+                coverage_points, grid_info, longueur, largeur,
+                target_coverage_db, min_coverage_percent, power_tx, max_access_points
+            )
+        else:
+            raise ValueError(f"Algorithme non supporté: {algorithm}. Utilisez 'kmeans', 'gmm' ou 'greedy'.")
+    
+    def _optimize_with_gmm_2d(self, coverage_points, grid_info, longueur, largeur,
+                             target_coverage_db=-70.0, min_coverage_percent=90.0,
+                             power_tx=20.0, max_access_points=6):
+        """
+        Optimise avec GMM + EM en utilisant le module gmm_optimizer.
+        """
+        if len(coverage_points) == 0:
+            return {'access_points': [], 'score': 0.0, 'stats': {}}, {}
+        
+        # Adapter la méthode d'évaluation du GMM optimizer pour utiliser notre calculateur
+        original_evaluate = self.gmm_optimizer._evaluate_configuration
+        
+        def adapted_evaluate(access_points, coverage_points, grid_info, target_coverage_db, min_coverage_percent):
+            # Utiliser notre méthode de calcul de qualité existante
+            return self.calculate_coverage_quality_2d(
+                access_points, coverage_points, grid_info, target_coverage_db, min_coverage_percent
+            )
+        
+        # Remplacer temporairement la méthode d'évaluation
+        self.gmm_optimizer._evaluate_configuration = adapted_evaluate
+        
+        try:
+            # Utiliser l'optimiseur GMM
+            best_config, gmm_analysis = self.gmm_optimizer.optimize_clustering_gmm(
+                coverage_points, grid_info, longueur, largeur,
+                target_coverage_db, min_coverage_percent, power_tx, max_access_points
+            )
+            
+            # Ajouter des informations spécifiques à notre contexte
+            if best_config:
+                best_config['algorithm_used'] = 'GMM+EM'
+                best_config['frequency_mhz'] = self.frequency_mhz
+            
+            return best_config, gmm_analysis
+            
+        finally:
+            # Restaurer la méthode d'évaluation originale
+            self.gmm_optimizer._evaluate_configuration = original_evaluate
+    
+    def _optimize_with_greedy_2d(self, coverage_points, grid_info, longueur, largeur,
+                                target_coverage_db=-70.0, min_coverage_percent=90.0,
+                                power_tx=20.0, max_access_points=6):
+        """
+        Optimise avec l'algorithme Greedy en utilisant le module greedy_optimizer.
+        """
+        if len(coverage_points) == 0:
+            return {'access_points': [], 'score': 0.0, 'stats': {}}, {}
+        
+        print("🎯 Optimisation avec algorithme Greedy...")
+        
+        # Utiliser l'optimiseur Greedy avec les bons paramètres
+        result = self.greedy_optimizer.optimize_greedy_placement(
+            coverage_points, grid_info, longueur, largeur,
+            target_coverage_db, min_coverage_percent, power_tx, max_access_points
+        )
+        
+        if result:
+            best_config, greedy_analysis = result
+            
+            # Ajouter des informations spécifiques à notre contexte
+            if best_config:
+                best_config['algorithm_used'] = 'Greedy'
+                best_config['frequency_mhz'] = self.frequency_mhz
+            
+            return best_config, greedy_analysis
+        else:
+            return {'access_points': [], 'score': 0.0, 'stats': {}}, {}
+
+    def compare_algorithms_2d(self, coverage_points, grid_info, longueur, largeur,
+                             target_coverage_db=-70.0, min_coverage_percent=90.0,
+                             power_tx=20.0, max_access_points=6):
+        """
+        Compare les performances de K-means vs GMM vs Greedy sur le même jeu de données.
+        
+        Returns:
+            comparison_results: Résultats de comparaison
+        """
+        print("🔬 Comparaison K-means vs GMM vs Greedy...")
+        
+        # Test avec K-means
+        print("📊 Test K-means...")
+        kmeans_config, kmeans_analysis = self.optimize_with_algorithm_choice_2d(
+            coverage_points, grid_info, longueur, largeur,
+            target_coverage_db, min_coverage_percent, power_tx, max_access_points,
+            algorithm='kmeans'
+        )
+        
+        # Test avec GMM
+        print("📊 Test GMM...")
+        gmm_config, gmm_analysis = self.optimize_with_algorithm_choice_2d(
+            coverage_points, grid_info, longueur, largeur,
+            target_coverage_db, min_coverage_percent, power_tx, max_access_points,
+            algorithm='gmm'
+        )
+        
+        # Test avec Greedy
+        print("📊 Test Greedy...")
+        greedy_config, greedy_analysis = self.optimize_with_algorithm_choice_2d(
+            coverage_points, grid_info, longueur, largeur,
+            target_coverage_db, min_coverage_percent, power_tx, max_access_points,
+            algorithm='greedy'
+        )
+        
+        # Comparaison des résultats
+        comparison = {
+            'kmeans': {
+                'config': kmeans_config,
+                'analysis': kmeans_analysis,
+                'coverage_percent': kmeans_config['stats']['coverage_percent'] if kmeans_config else 0,
+                'num_access_points': len(kmeans_config['access_points']) if kmeans_config else 0,
+                'score': kmeans_config['score'] if kmeans_config else 0
+            },
+            'gmm': {
+                'config': gmm_config,
+                'analysis': gmm_analysis,
+                'coverage_percent': gmm_config['stats']['coverage_percent'] if gmm_config else 0,
+                'num_access_points': len(gmm_config['access_points']) if gmm_config else 0,
+                'score': gmm_config['score'] if gmm_config else 0
+            },
+            'greedy': {
+                'config': greedy_config,
+                'analysis': greedy_analysis,
+                'coverage_percent': greedy_config['stats']['coverage_percent'] if greedy_config else 0,
+                'num_access_points': len(greedy_config['access_points']) if greedy_config else 0,
+                'score': greedy_config['score'] if greedy_config else 0
+            }
+        }
+        
+        # Déterminer le meilleur algorithme
+        best_algorithm = None
+        best_score = -1
+        
+        for algo in ['kmeans', 'gmm', 'greedy']:
+            if comparison[algo]['config'] and comparison[algo]['score'] > best_score:
+                best_score = comparison[algo]['score']
+                best_algorithm = algo
+        
+        comparison['recommended'] = best_algorithm
+        
+        if best_algorithm:
+            # Calculer l'amélioration par rapport aux autres
+            other_scores = [comparison[algo]['score'] for algo in ['kmeans', 'gmm', 'greedy'] 
+                          if algo != best_algorithm and comparison[algo]['config']]
+            if other_scores:
+                comparison['improvement'] = best_score - max(other_scores)
+            else:
+                comparison['improvement'] = 0
+        
+        return comparison
+    
+    def visualize_algorithm_comparison_2d(self, comparison_results, coverage_points, 
+                                          grid_info, longueur, largeur, image_array):
+        """
+        Visualise la comparaison entre K-means, GMM et Greedy.
+        
+        Args:
+            comparison_results: Résultats de la comparaison
+            coverage_points: Points à couvrir
+            grid_info: Informations sur la grille
+            longueur, largeur: Dimensions
+            image_array: Image de fond
+            
+        Returns:
+            fig: Figure matplotlib avec comparaison
+        """
+        fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+        fig.suptitle('Comparaison K-means vs GMM vs Greedy pour Optimisation WiFi 2D', 
+                    fontsize=16, fontweight='bold')
+        
+        # Configuration des sous-graphiques
+        algorithms = ['kmeans', 'gmm', 'greedy']
+        algorithm_names = ['K-means', 'GMM + EM', 'Greedy']
+        colors = ['blue', 'green', 'red']
+        
+        for idx, (algo, name, color) in enumerate(zip(algorithms, algorithm_names, colors)):
+            if algo in comparison_results and comparison_results[algo]['config']:
+                config = comparison_results[algo]['config']
+                access_points = config['access_points']
+                stats = config['stats']
+                
+                # Graphique des positions (ligne du haut)
+                ax_pos = axes[0, idx]
+                
+                # Image de fond
+                if image_array is not None:
+                    ax_pos.imshow(image_array, extent=[0, longueur, largeur, 0], cmap='gray', alpha=0.7)
+                
+                # Points de couverture
+                if len(coverage_points) < 300:  # Éviter la surcharge
+                    coverage_x = [p[0] for p in coverage_points]
+                    coverage_y = [p[1] for p in coverage_points]
+                    ax_pos.scatter(coverage_x, coverage_y, c='lightblue', s=8, alpha=0.4, label='Points à couvrir')
+                
+                # Points d'accès
+                for i, (x, y, power) in enumerate(access_points):
+                    ax_pos.scatter(x, y, c=color, s=200, marker='*', 
+                                 edgecolors='black', linewidth=2, zorder=5)
+                    
+                    # Rayon de couverture estimé
+                    estimated_range = max(3.0, min(12.0, power / 3.0))
+                    circle = plt.Circle((x, y), estimated_range, fill=False, 
+                                      color=color, alpha=0.6, linestyle='--')
+                    ax_pos.add_patch(circle)
+                    
+                    # Étiquette
+                    ax_pos.annotate(f'AP{i+1}', (x, y), xytext=(5, 5), 
+                                  textcoords='offset points', fontsize=9, 
+                                  fontweight='bold', color='white')
+                
+                ax_pos.set_xlim(0, longueur)
+                ax_pos.set_ylim(largeur, 0)
+                ax_pos.set_xlabel('Longueur (m)')
+                ax_pos.set_ylabel('Largeur (m)')
+                ax_pos.set_title(f'{name}\n{len(access_points)} AP - {stats["coverage_percent"]:.1f}% couverture')
+                ax_pos.grid(True, alpha=0.3)
+                if idx == 0 and len(coverage_points) < 300:
+                    ax_pos.legend(fontsize=8)
+                
+                # Métriques (ligne du bas)
+                ax_metrics = axes[1, idx]
+                
+                # Données pour le graphique en barres
+                metrics_names = ['Couverture\n(%)', 'Nb AP', 'Score\n(*10)', 'Points\nCouverts']
+                metrics_values = [
+                    stats['coverage_percent'],
+                    len(access_points),
+                    config['score'] * 10,  # Multiplié pour visibilité
+                    stats['covered_points']
+                ]
+                
+                bars = ax_metrics.bar(metrics_names, metrics_values, color=color, alpha=0.7)
+                
+                # Ajout des valeurs sur les barres
+                for bar, value, metric in zip(bars, metrics_values, metrics_names):
+                    height = bar.get_height()
+                    if 'Score' in metric:
+                        display_value = f'{value/10:.3f}'  # Valeur réelle du score
+                    elif 'Couverture' in metric:
+                        display_value = f'{value:.1f}%'
+                    else:
+                        display_value = f'{int(value)}'
+                    
+                    ax_metrics.text(bar.get_x() + bar.get_width()/2., height + max(metrics_values)*0.01,
+                                  display_value, ha='center', va='bottom', fontweight='bold')
+                
+                ax_metrics.set_title(f'Métriques {name}')
+                ax_metrics.set_ylabel('Valeur')
+                ax_metrics.grid(True, alpha=0.3, axis='y')
+                
+                # Informations supplémentaires spécifiques à chaque algorithme
+                info_text = ""
+                if algo == 'gmm' and 'gmm_metrics' in config:
+                    gmm_metrics = config['gmm_metrics']
+                    info_text = f"AIC: {gmm_metrics['aic']:.1f}\n"
+                    info_text += f"BIC: {gmm_metrics['bic']:.1f}\n"
+                    info_text += f"Convergé: {'Oui' if gmm_metrics['converged'] else 'Non'}"
+                elif algo == 'greedy' and 'steps' in comparison_results[algo]['analysis']:
+                    steps = comparison_results[algo]['analysis']['steps']
+                    info_text = f"Étapes: {len(steps)}\n"
+                    info_text += f"Itérations: {comparison_results[algo]['analysis']['total_iterations']}\n"
+                    info_text += f"Convergence: {comparison_results[algo]['analysis']['convergence_reason'][:20]}..."
+                elif algo == 'kmeans':
+                    info_text = f"Clusters: {len(access_points)}\n"
+                    info_text += f"Clustering rapide\n"
+                    info_text += f"Stable et efficace"
+                
+                if info_text:
+                    ax_metrics.text(0.02, 0.98, info_text, transform=ax_metrics.transAxes,
+                                  fontsize=8, verticalalignment='top',
+                                  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        
+        # Résumé de comparaison
+        if 'recommended' in comparison_results:
+            recommended = comparison_results['recommended']
+            if recommended:
+                improvement = comparison_results.get('improvement', 0)
+                algo_names = {'kmeans': 'K-means', 'gmm': 'GMM + EM', 'greedy': 'Greedy'}
+                
+                summary_text = f"🏆 Algorithme recommandé: {algo_names[recommended]}\n"
+                summary_text += f"📈 Amélioration du score: +{improvement:.3f}"
+                
+                fig.text(0.5, 0.02, summary_text, ha='center', fontsize=12, 
+                        fontweight='bold', bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
+        
+        plt.tight_layout()
+        plt.subplots_adjust(bottom=0.1, top=0.93)
+        return fig

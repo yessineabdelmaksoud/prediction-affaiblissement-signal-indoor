@@ -6,6 +6,8 @@ from sklearn.cluster import KMeans
 import pandas as pd
 from pathloss_calculator_3d import PathlossCalculator3D
 from image_processor import ImageProcessor
+from gmm_optimizer_3d import GMMOptimizer3D
+from greedy_optimizer_3d import GreedyOptimizer3D
 
 class AccessPointOptimizer:
     def __init__(self, frequency_mhz):
@@ -18,6 +20,9 @@ class AccessPointOptimizer:
         self.frequency_mhz = frequency_mhz
         self.calculator_3d = PathlossCalculator3D(frequency_mhz)
         self.processor = ImageProcessor()
+        # Initialisation des optimiseurs spécialisés
+        self.gmm_optimizer = GMMOptimizer3D(frequency_mhz)
+        self.greedy_optimizer = GreedyOptimizer3D(frequency_mhz)
         
     def generate_coverage_zones(self, walls_detected, longueur, largeur, hauteur_totale, 
                                resolution_xy=20, resolution_z=8):
@@ -604,3 +609,192 @@ class AccessPointOptimizer:
             return csv_content
         else:
             return df_ap.to_csv(index=False)
+    
+    def optimize_with_algorithm_choice_3d(self, algorithm_choice, coverage_points, grid_info, 
+                                         longueur, largeur, hauteur_totale, target_coverage_db=-70.0, 
+                                         min_coverage_percent=90.0, max_access_points=8, power_tx=20.0):
+        """
+        Optimise le placement des points d'accès 3D avec choix d'algorithme.
+        
+        Args:
+            algorithm_choice: 'genetic', 'kmeans', 'gmm', ou 'greedy'
+            coverage_points: Points à couvrir
+            grid_info: Informations sur la grille
+            longueur, largeur, hauteur_totale: Dimensions
+            target_coverage_db: Signal minimal requis
+            min_coverage_percent: Couverture minimale
+            max_access_points: Nombre maximal d'AP
+            power_tx: Puissance de transmission
+            
+        Returns:
+            best_config: Configuration optimale
+            algorithm_analysis: Analyse spécifique à l'algorithme
+        """
+        
+        print(f"🚀 Optimisation 3D avec algorithme: {algorithm_choice.upper()}")
+        
+        if algorithm_choice == 'genetic':
+            return self.optimize_access_points_genetic(
+                coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                target_coverage_db, min_coverage_percent, max_access_points, power_tx
+            )
+        
+        elif algorithm_choice == 'kmeans':
+            return self.optimize_with_clustering(
+                coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                target_coverage_db, min_coverage_percent, power_tx
+            )
+        
+        elif algorithm_choice == 'gmm':
+            return self._optimize_with_gmm_3d(
+                coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                target_coverage_db, min_coverage_percent, max_access_points, power_tx
+            )
+        
+        elif algorithm_choice == 'greedy':
+            return self._optimize_with_greedy_3d(
+                coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                target_coverage_db, min_coverage_percent, max_access_points, power_tx
+            )
+        
+        else:
+            raise ValueError(f"Algorithme non supporté: {algorithm_choice}")
+    
+    def _optimize_with_gmm_3d(self, coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                             target_coverage_db, min_coverage_percent, max_access_points, power_tx):
+        """
+        Optimisation avec algorithme GMM 3D.
+        """
+        # Injection de la méthode d'évaluation dans l'optimiseur GMM
+        self.gmm_optimizer._evaluate_configuration_3d = lambda aps, cps, gi, tcdb, mcp: \
+            self.calculate_coverage_quality(aps, cps, gi, tcdb, mcp)
+        
+        return self.gmm_optimizer.optimize_clustering_gmm_3d(
+            coverage_points, grid_info, longueur, largeur, hauteur_totale,
+            target_coverage_db, min_coverage_percent, power_tx, max_access_points
+        )
+    
+    def _optimize_with_greedy_3d(self, coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                                target_coverage_db, min_coverage_percent, max_access_points, power_tx):
+        """
+        Optimisation avec algorithme Greedy 3D.
+        """
+        # Injection de la méthode d'évaluation dans l'optimiseur Greedy
+        self.greedy_optimizer._evaluate_configuration_3d = lambda aps, cps, gi, tcdb, mcp: \
+            self.calculate_coverage_quality(aps, cps, gi, tcdb, mcp)
+        
+        return self.greedy_optimizer.optimize_greedy_placement_3d(
+            coverage_points, grid_info, longueur, largeur, hauteur_totale,
+            target_coverage_db, min_coverage_percent, power_tx, max_access_points
+        )
+    
+    def compare_algorithms_3d(self, coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                             target_coverage_db=-70.0, min_coverage_percent=90.0, 
+                             max_access_points=8, power_tx=20.0):
+        """
+        Compare tous les algorithmes d'optimisation 3D disponibles.
+        
+        Args:
+            coverage_points: Points à couvrir
+            grid_info: Informations sur la grille
+            longueur, largeur, hauteur_totale: Dimensions
+            target_coverage_db: Signal minimal requis
+            min_coverage_percent: Couverture minimale
+            max_access_points: Nombre maximal d'AP
+            power_tx: Puissance de transmission
+            
+        Returns:
+            comparison_results: Résultats comparatifs
+        """
+        
+        algorithms = ['genetic', 'kmeans', 'gmm', 'greedy']
+        results = {}
+        
+        print("🔬 Comparaison des algorithmes d'optimisation 3D...")
+        
+        for algorithm in algorithms:
+            try:
+                print(f"\n📊 Test algorithme: {algorithm.upper()}")
+                
+                config, analysis = self.optimize_with_algorithm_choice_3d(
+                    algorithm, coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                    target_coverage_db, min_coverage_percent, max_access_points, power_tx
+                )
+                
+                if config:
+                    results[algorithm] = {
+                        'config': config,
+                        'analysis': analysis,
+                        'algorithm_name': algorithm.upper(),
+                        'success': True
+                    }
+                    
+                    stats = config['stats']
+                    print(f"✅ {algorithm.upper()}: {stats['coverage_percent']:.1f}% couverture, "
+                          f"{stats['num_access_points']} APs, score {config['score']:.3f}")
+                else:
+                    results[algorithm] = {
+                        'config': None,
+                        'analysis': {},
+                        'algorithm_name': algorithm.upper(),
+                        'success': False
+                    }
+                    print(f"❌ {algorithm.upper()}: Échec de l'optimisation")
+                    
+            except Exception as e:
+                print(f"⚠️  Erreur {algorithm.upper()}: {e}")
+                results[algorithm] = {
+                    'config': None,
+                    'analysis': {'error': str(e)},
+                    'algorithm_name': algorithm.upper(),
+                    'success': False
+                }
+        
+        # Détermination du meilleur algorithme
+        best_algorithm = None
+        best_score = -1.0
+        
+        for algo, result in results.items():
+            if result['success'] and result['config']:
+                score = result['config']['score']
+                if score > best_score:
+                    best_score = score
+                    best_algorithm = algo
+        
+        comparison_results = {
+            'algorithms': results,
+            'best_algorithm': best_algorithm,
+            'best_score': best_score,
+            'summary': self._generate_comparison_summary_3d(results)
+        }
+        
+        print(f"\n🏆 Meilleur algorithme: {best_algorithm.upper() if best_algorithm else 'Aucun'}")
+        
+        return comparison_results
+    
+    def _generate_comparison_summary_3d(self, results):
+        """
+        Génère un résumé de la comparaison des algorithmes 3D.
+        """
+        summary = {
+            'total_algorithms': len(results),
+            'successful_algorithms': sum(1 for r in results.values() if r['success']),
+            'failed_algorithms': sum(1 for r in results.values() if not r['success']),
+            'performance_ranking': []
+        }
+        
+        # Classement par performance
+        successful_results = [(algo, result) for algo, result in results.items() if result['success']]
+        successful_results.sort(key=lambda x: x[1]['config']['score'] if x[1]['config'] else 0, reverse=True)
+        
+        for i, (algo, result) in enumerate(successful_results):
+            stats = result['config']['stats']
+            summary['performance_ranking'].append({
+                'rank': i + 1,
+                'algorithm': algo.upper(),
+                'coverage_percent': stats['coverage_percent'],
+                'num_access_points': stats['num_access_points'],
+                'score': result['config']['score']
+            })
+        
+        return summary

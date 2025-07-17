@@ -351,67 +351,6 @@ class HeatmapGenerator3D:
         
         return fig
     
-    def visualize_isosurfaces(self, voxel_data, coordinates, seuils):
-        """
-        Visualise des surfaces isométriques pour différents niveaux de qualité.
-        
-        Args:
-            voxel_data: Données des voxels
-            coordinates: Coordonnées
-            seuils: Seuils de qualité
-            
-        Returns:
-            fig: Figure Plotly 3D avec isosurfaces
-        """
-        fig = go.Figure()
-        
-        # Masquer les murs
-        clean_data = np.where(voxel_data < 200, voxel_data, np.nan)
-        
-        # Création des meshgrids
-        X, Y, Z = np.meshgrid(coordinates['x'], coordinates['y'], coordinates['z'], indexing='ij')
-        
-        # Transposition pour correspondre à la structure des données
-        X = X.transpose(2, 1, 0)
-        Y = Y.transpose(2, 1, 0)
-        Z = Z.transpose(2, 1, 0)
-        clean_data_t = clean_data.transpose(2, 1, 0)
-        
-        # Isosurfaces pour différents niveaux
-        colors_iso = ['green', 'yellow', 'orange']
-        names_iso = ['Excellent', 'Bon', 'Faible']
-        levels = [-seuils['excellent'], -seuils['bon'], -seuils['faible']]
-        
-        for level, color, name in zip(levels, colors_iso, names_iso):
-            if not np.isnan(clean_data_t).all():
-                fig.add_trace(go.Isosurface(
-                    x=X.flatten(),
-                    y=Y.flatten(),
-                    z=Z.flatten(),
-                    value=clean_data_t.flatten(),
-                    isomin=level - 5,
-                    isomax=level + 5,
-                    surface_count=1,
-                    colorscale=[[0, color], [1, color]],
-                    showscale=False,
-                    opacity=0.6,
-                    name=name
-                ))
-        
-        fig.update_layout(
-            title=f"Surfaces Isométriques 3D - {self.frequency_mhz} MHz",
-            scene=dict(
-                xaxis_title="Longueur (m)",
-                yaxis_title="Largeur (m)",
-                zaxis_title="Hauteur (m)",
-                aspectmode="data"
-            ),
-            width=900,
-            height=700
-        )
-        
-        return fig
-    
     def visualize_cross_sections(self, voxel_data, coordinates, colormap, nb_etages):
         """
         Crée des coupes transversales par étage.
@@ -548,65 +487,6 @@ class HeatmapGenerator3D:
             stats_par_etage.append(stats_etage)
         
         return stats_par_etage
-    
-    def generate_3d_recommendations(self, stats_3d, stats_par_etage, nb_emetteurs, emetteurs_3d):
-        """
-        Génère des recommandations d'optimisation pour la 3D.
-        
-        Args:
-            stats_3d: Statistiques globales 3D
-            stats_par_etage: Statistiques par étage
-            nb_emetteurs: Nombre d'émetteurs
-            emetteurs_3d: Configuration des émetteurs
-            
-        Returns:
-            recommendations: Liste de recommandations
-        """
-        recommendations = []
-        
-        # Analyse globale
-        couverture_totale = stats_3d['excellent'] + stats_3d['bon']
-        
-        if couverture_totale < 50:
-            recommendations.append("Couverture 3D insuffisante (< 50%). Augmentez le nombre d'émetteurs ou leur puissance.")
-        
-        if stats_3d['mauvaise'] > 40:
-            recommendations.append("Trop de zones avec mauvaise couverture 3D. Redistribuez les émetteurs en hauteur.")
-        
-        # Analyse par étage
-        if stats_par_etage:
-            etages_problematiques = []
-            for i, stats_etage in enumerate(stats_par_etage):
-                if stats_etage['mauvaise'] > 30:
-                    etages_problematiques.append(i + 1)
-            
-            if etages_problematiques:
-                recommendations.append(f"Étage(s) {', '.join(map(str, etages_problematiques))} ont une couverture insuffisante. Ajoutez des émetteurs à ces niveaux.")
-        
-        # Analyse de la distribution des émetteurs
-        if nb_emetteurs == 1:
-            recommendations.append("Un seul émetteur pour un volume 3D peut être insuffisant. Considérez un déploiement multi-étages.")
-        
-        # Analyse de la hauteur des émetteurs
-        hauteurs_emetteurs = [emit['position_meter'][2] for emit in emetteurs_3d]
-        if len(set([int(h // 2.7) for h in hauteurs_emetteurs])) == 1:
-            recommendations.append("Tous les émetteurs sont au même étage. Distribuez-les verticalement pour une meilleure couverture 3D.")
-        
-        # Recommandations sur la directivité
-        directivites = [emit['directivite'] for emit in emetteurs_3d]
-        if all(d == 'Directif' for d in directivites):
-            recommendations.append("Tous les émetteurs sont directifs. Considérez des antennes omnidirectionnelles pour améliorer la couverture globale.")
-        
-        # Recommandations par fréquence
-        if self.frequency_mhz > 5000:
-            recommendations.append("Haute fréquence (5+ GHz): Excellente pour la capacité mais portée 3D limitée. Rapprochez les émetteurs verticalement.")
-        
-        if len(recommendations) == 0:
-            recommendations.append("La configuration 3D actuelle semble bien optimisée pour cette fréquence et ce volume.")
-        
-        recommendations.append("Validez avec des mesures réelles, particulièrement les effets de propagation verticale.")
-        
-        return recommendations
     
     def export_voxel_data_csv(self, voxel_data, coordinates):
         """
