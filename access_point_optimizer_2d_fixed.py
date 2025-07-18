@@ -7,7 +7,7 @@ import pandas as pd
 import io
 from pathloss_calculator import PathlossCalculator
 from image_processor import ImageProcessor
-from gmm_optimizer import GMMOptimizer
+from gmm_optimizer import GMMOptimizer 
 from greedy_optimizer import GreedyOptimizer
 
 class AccessPointOptimizer2D:
@@ -21,7 +21,7 @@ class AccessPointOptimizer2D:
         self.frequency_mhz = frequency_mhz
         self.calculator = PathlossCalculator(frequency_mhz)
         self.processor = ImageProcessor()
-        self.gmm_optimizer = GMMOptimizer()
+        self.gmm_optimizer = GMMOptimizer(frequency_mhz * 1e6)  # Conversion MHz vers Hz
         self.greedy_optimizer = GreedyOptimizer(frequency_mhz * 1e6)  # Conversion MHz vers Hz
         
     def generate_coverage_grid_2d(self, walls_detected, longueur, largeur, resolution=25):
@@ -186,8 +186,8 @@ class AccessPointOptimizer2D:
         best_score = -1.0
         cluster_analysis = {}
         
-        # Test différents nombres de clusters (AP) - RESPECT DE LA CONTRAINTE MAX
-        max_clusters_to_test = min(max_access_points, 6)  # Respect de la contrainte utilisateur
+        # Test différents nombres de clusters (AP)
+        max_clusters_to_test = max_access_points  # Utiliser directement la contrainte utilisateur
         print(f"Clustering 2D: test de 1 à {max_clusters_to_test} AP (objectif {min_coverage_percent}%)")
         
         for num_clusters in range(1, max_clusters_to_test + 1):
@@ -198,22 +198,75 @@ class AccessPointOptimizer2D:
             
             # Ajustement des centres pour éviter les murs
             adjusted_centers = []
-            for center in cluster_centers:
+            for cluster_idx, center in enumerate(cluster_centers):
                 x, y = center
                 
                 # Vérification si dans un mur
                 x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
                 y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
                 
-                # Si dans un mur, déplacer vers le point le plus proche qui n'est pas dans un mur
+                # Si dans un mur, déplacer vers un point valide
                 if grid_info['walls_detected'][y_pixel, x_pixel] > 0:
-                    # Trouver le point du cluster le plus proche qui n'est pas dans un mur
-                    cluster_points = points_array[cluster_labels == len(adjusted_centers)]
+                    # Trouver les points de ce cluster spécifique
+                    cluster_points = points_array[cluster_labels == cluster_idx]
                     if len(cluster_points) > 0:
-                        # Prendre le centroïde des points valides
+                        # Prendre le centroïde des points valides du cluster
                         x, y = np.mean(cluster_points, axis=0)
+                        
+                        # Re-vérifier si le nouveau centre est encore dans un mur
+                        x_pixel_new = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                        y_pixel_new = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                        
+                        if grid_info['walls_detected'][y_pixel_new, x_pixel_new] > 0:
+                            # Si encore dans un mur, chercher le point le plus proche hors mur
+                            best_point = None
+                            min_distance = float('inf')
+                            
+                            for point in cluster_points:
+                                px, py = point
+                                px_pixel = int(np.clip(px / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                                py_pixel = int(np.clip(py / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                                
+                                if grid_info['walls_detected'][py_pixel, px_pixel] == 0:  # Pas dans un mur
+                                    distance = np.sqrt((px - center[0])**2 + (py - center[1])**2)
+                                    if distance < min_distance:
+                                        min_distance = distance
+                                        best_point = (px, py)
+                            
+                            if best_point is not None:
+                                x, y = best_point
                 
                 adjusted_centers.append((x, y, power_tx))
+            
+            # Validation finale : s'assurer qu'aucun AP n'est dans un mur
+            validated_centers = []
+            for x, y, power in adjusted_centers:
+                x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                
+                if grid_info['walls_detected'][y_pixel, x_pixel] == 0:  # Position valide
+                    validated_centers.append((x, y, power))
+                else:
+                    # Dernière tentative : déplacer légèrement la position
+                    for dx in [-1, 0, 1]:
+                        for dy in [-1, 0, 1]:
+                            new_x_pixel = np.clip(x_pixel + dx, 0, grid_info['walls_detected'].shape[1] - 1)
+                            new_y_pixel = np.clip(y_pixel + dy, 0, grid_info['walls_detected'].shape[0] - 1)
+                            
+                            if grid_info['walls_detected'][new_y_pixel, new_x_pixel] == 0:
+                                new_x = new_x_pixel * grid_info['scale_x']
+                                new_y = new_y_pixel * grid_info['scale_y']
+                                validated_centers.append((new_x, new_y, power))
+                                break
+                        else:
+                            continue
+                        break
+                    else:
+                        # Si aucune position valide trouvée, garder la position originale avec avertissement
+                        print(f"⚠️ AP à ({x:.1f}, {y:.1f}) pourrait être dans un mur")
+                        validated_centers.append((x, y, power))
+            
+            adjusted_centers = validated_centers
             
             # Évaluation de cette configuration
             score, stats = self.calculate_coverage_quality_2d(
@@ -238,13 +291,48 @@ class AccessPointOptimizer2D:
                     'num_clusters': num_clusters
                 }
             
-            # ARRÊT ANTICIPÉ: Si l'objectif est atteint avec ce nombre d'AP
+            # ARRÊT ANTICIPÉ INTELLIGENT: Vérifier si l'objectif est atteint
             current_coverage = stats.get('coverage_percent', 0.0)
+            covered_points = stats.get('covered_points', 0)
+            total_points = stats.get('total_points', len(coverage_points))
+            
+            print(f"📊 K-means {num_clusters} AP: {current_coverage:.1f}% de couverture ({covered_points}/{total_points} points)")
+            
+            # Si objectif atteint, s'arrêter immédiatement avec cette configuration
             if current_coverage >= min_coverage_percent:
-                print(f"✅ Objectif de couverture {min_coverage_percent}% atteint avec {num_clusters} AP ({current_coverage:.1f}%)")
-                break  # Arrêt pour éviter d'ajouter plus d'AP inutilement
+                print(f"✅ Objectif {min_coverage_percent}% atteint avec {num_clusters} AP - ARRÊT OPTIMISATION")
+                
+                # Cette configuration respecte l'objectif, on s'arrête ici
+                best_config = {
+                    'access_points': adjusted_centers,
+                    'score': score,
+                    'stats': stats,
+                    'num_clusters': num_clusters,
+                    'early_stop': True,
+                    'early_stop_reason': f"Objectif {min_coverage_percent}% atteint"
+                }
+                break  # Sortir de la boucle immédiatement
+        
+        # Affichage final uniforme
+        if best_config:
+            print(f"✅ Optimisation K-means terminée:")
+            print(f"   - Algorithme: K-means Clustering")
+            print(f"   - {len(best_config['access_points'])} points d'accès placés")
+            final_coverage = best_config['stats']['coverage_percent']
+            covered = best_config['stats']['covered_points']
+            total = best_config['stats']['total_points']
+            print(f"   - {final_coverage:.1f}% de couverture ({covered}/{total} points)")
+            print(f"   - Score: {best_config['score']:.3f}")
+            
+            # Indiquer si arrêt anticipé
+            if best_config.get('early_stop', False):
+                reason = best_config.get('early_stop_reason', 'Objectif atteint')
+                print(f"   - Arrêt anticipé: {reason}")
+                print(f"   - Optimisation efficace: minimum d'AP pour l'objectif")
             else:
-                print(f"📊 {num_clusters} AP: {current_coverage:.1f}% de couverture")
+                print(f"   - Optimisation complète: meilleur score global")
+        else:
+            print("❌ Aucune configuration K-means trouvée")
         
         return best_config, cluster_analysis
     
@@ -545,19 +633,79 @@ class AccessPointOptimizer2D:
         
         comparison['recommended'] = best_algorithm
         
+        # Affichage standardisé des résultats
+        print("\n" + "="*80)
+        print("🏆 COMPARAISON FINALE DES ALGORITHMES")
+        print("="*80)
+        
+        # Afficher les résultats de chaque algorithme
+        if kmeans_config:
+            self.print_algorithm_summary("K-means", kmeans_config, kmeans_analysis)
+        
+        if gmm_config:
+            self.print_algorithm_summary("GMM", gmm_config, gmm_analysis)
+        
+        if greedy_config:
+            self.print_algorithm_summary("Greedy", greedy_config, greedy_analysis)
+        
+        # Recommandation finale
         if best_algorithm:
+            algo_names = {'kmeans': 'K-means', 'gmm': 'GMM + EM', 'greedy': 'Greedy'}
+            print(f"🏆 ALGORITHME RECOMMANDÉ: {algo_names[best_algorithm]}")
+            print(f"📊 Score optimal: {best_score:.3f}")
+            
             # Calculer l'amélioration par rapport aux autres
             other_scores = [comparison[algo]['score'] for algo in ['kmeans', 'gmm', 'greedy'] 
                           if algo != best_algorithm and comparison[algo]['config']]
             if other_scores:
                 comparison['improvement'] = best_score - max(other_scores)
+                print(f"📈 Amélioration: +{comparison['improvement']:.3f} par rapport au 2ème meilleur")
             else:
                 comparison['improvement'] = 0
+        else:
+            print("❌ Aucun algorithme n'a produit de résultat valide")
+        
+        print("="*80 + "\n")
         
         return comparison
     
     def visualize_algorithm_comparison_2d(self, comparison_results, coverage_points, 
                                           grid_info, longueur, largeur, image_array):
+        """
+        Visualise la comparaison entre K-means, GMM et Greedy en utilisant le nouveau système unifié.
+        
+        Args:
+            comparison_results: Résultats de la comparaison
+            coverage_points: Points à couvrir
+            grid_info: Informations sur la grille
+            longueur, largeur: Dimensions
+            image_array: Image de fond
+            
+        Returns:
+            tuple: (figure comparative, figure performance)
+        """
+        
+        from wifi_visualization_comparator import create_algorithm_comparison_visualization
+        
+        try:
+            # Utiliser le nouveau système de visualisation unifié
+            comparison_fig, performance_fig = create_algorithm_comparison_visualization(
+                comparison_results, coverage_points, grid_info, 
+                longueur, largeur, image_array
+            )
+            
+            return comparison_fig, performance_fig
+            
+        except Exception as e:
+            print(f"⚠️ Erreur dans la visualisation unifiée: {e}")
+            # Fallback vers l'ancienne méthode
+            return self._visualize_algorithm_comparison_2d_fallback(
+                comparison_results, coverage_points, grid_info, 
+                longueur, largeur, image_array
+            )
+    
+    def _visualize_algorithm_comparison_2d_fallback(self, comparison_results, coverage_points, 
+                                                   grid_info, longueur, largeur, image_array):
         """
         Visualise la comparaison entre K-means, GMM et Greedy.
         
@@ -693,3 +841,55 @@ class AccessPointOptimizer2D:
         plt.tight_layout()
         plt.subplots_adjust(bottom=0.1, top=0.93)
         return fig
+    
+    def print_algorithm_summary(self, algorithm_name: str, config, analysis = None):
+        """
+        Affiche un résumé standardisé des résultats d'un algorithme.
+        
+        Args:
+            algorithm_name: Nom de l'algorithme (K-means, GMM, Greedy)
+            config: Configuration des points d'accès
+            analysis: Analyse optionnelle de l'algorithme
+        """
+        if not config or 'access_points' not in config:
+            print(f"❌ {algorithm_name}: Aucune configuration valide trouvée")
+            return
+        
+        stats = config.get('stats', {})
+        access_points = config['access_points']
+        
+        print(f"\n{'='*60}")
+        print(f"📊 RÉSUMÉ {algorithm_name.upper()}")
+        print(f"{'='*60}")
+        print(f"   🎯 Points d'accès placés: {len(access_points)}")
+        print(f"   📈 Couverture: {stats.get('coverage_percent', 0):.1f}% "
+              f"({stats.get('covered_points', 0)}/{stats.get('total_points', 0)} points)")
+        print(f"   🏆 Score global: {config.get('score', 0):.3f}")
+        
+        # Informations spécifiques par algorithme
+        if algorithm_name.lower() == 'greedy' and analysis:
+            print(f"   🔄 Itérations totales: {analysis.get('total_iterations', 0)}")
+            print(f"   🏁 Raison d'arrêt: {analysis.get('convergence_reason', 'Inconnue')}")
+            steps = analysis.get('steps', [])
+            if steps:
+                print(f"   📊 Étapes d'optimisation: {len(steps)}")
+        
+        elif algorithm_name.lower() == 'gmm' and 'gmm_metrics' in config:
+            metrics = config['gmm_metrics']
+            print(f"   🎲 Composantes optimales: {config.get('n_components', 'N/A')}")
+            print(f"   📉 AIC: {metrics.get('aic', 0):.1f}")
+            print(f"   📉 BIC: {metrics.get('bic', 0):.1f}")
+            print(f"   ✅ Convergence EM: {'Oui' if metrics.get('converged', False) else 'Non'}")
+        
+        elif algorithm_name.lower() == 'kmeans':
+            print(f"   🎯 Clusters: {len(access_points)}")
+            print(f"   ⚡ Algorithme rapide et stable")
+        
+        # Positions des points d'accès
+        print(f"   📍 Positions des AP:")
+        for i, (x, y, power) in enumerate(access_points[:5]):  # Limite à 5 pour l'affichage
+            print(f"      AP{i+1}: ({x:.1f}, {y:.1f}) - {power}dBm")
+        if len(access_points) > 5:
+            print(f"      ... et {len(access_points) - 5} autres AP")
+        
+        print(f"{'='*60}\n")

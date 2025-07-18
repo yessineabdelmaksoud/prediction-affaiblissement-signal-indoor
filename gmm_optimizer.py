@@ -2,6 +2,8 @@ import numpy as np
 from sklearn.mixture import GaussianMixture
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import cdist
+from pathloss_calculator import PathlossCalculator
+from image_processor import ImageProcessor
 
 class GMMOptimizer:
     """
@@ -11,23 +13,28 @@ class GMMOptimizer:
     Avantages par rapport à K-means:
     - Peut capturer des clusters de formes ellipsoïdales
     - Modélise la variance de chaque cluster
-    - Donne des probabilités d'appartenance
+    - Donne des probabilités d'appartenance 
     - Meilleure adaptation aux zones de formes irrégulières
     """
     
-    def __init__(self, covariance_type='diag', max_iter=100, random_state=42):
+    def __init__(self, frequency=2.4e9, covariance_type='diag', max_iter=100, random_state=42):
         """
         Initialise l'optimiseur GMM.
         
         Args:
+            frequency: Fréquence de transmission en Hz
             covariance_type: Type de covariance ('diag', 'full', 'tied', 'spherical')
                            'diag' recommandé pour efficacité
             max_iter: Nombre maximal d'itérations EM
             random_state: Graine aléatoire pour reproductibilité
         """
+        self.frequency = frequency
+        self.frequency_mhz = frequency / 1e6  # Conversion Hz vers MHz
         self.covariance_type = covariance_type
         self.max_iter = max_iter
         self.random_state = random_state
+        self.pathloss_calculator = PathlossCalculator(self.frequency_mhz)
+        self.processor = ImageProcessor()
         
     def optimize_clustering_gmm(self, coverage_points, grid_info, longueur, largeur,
                                target_coverage_db=-70.0, min_coverage_percent=90.0,
@@ -161,27 +168,69 @@ class GMMOptimizer:
                 
                 # Arrêt anticipé si objectif atteint
                 current_coverage = stats.get('coverage_percent', 0.0)
+                covered_points = stats.get('covered_points', 0)
+                total_points = stats.get('total_points', len(coverage_points))
+                
+                print(f"📊 GMM {n_components} composantes: {current_coverage:.1f}% de couverture ({covered_points}/{total_points} points)")
+                
+                # Si objectif atteint, s'arrêter immédiatement avec cette configuration
                 if current_coverage >= min_coverage_percent:
-                    print(f"✅ GMM: Objectif {min_coverage_percent}% atteint avec {n_components} composantes ({current_coverage:.1f}%)")
-                    break
-                else:
-                    print(f"📊 GMM {n_components} composantes: {current_coverage:.1f}% de couverture")
+                    print(f"✅ Objectif {min_coverage_percent}% atteint avec {n_components} composantes - ARRÊT OPTIMISATION")
+                    
+                    # Cette configuration respecte l'objectif, on s'arrête ici
+                    best_config = {
+                        'access_points': adjusted_centers,
+                        'score': score,
+                        'stats': stats,
+                        'n_components': n_components,
+                        'algorithm': 'GMM+EM',
+                        'early_stop': True,
+                        'early_stop_reason': f"Objectif {min_coverage_percent}% atteint",
+                        'gmm_metrics': {
+                            'aic': aic,
+                            'bic': bic,
+                            'log_likelihood': log_likelihood,
+                            'converged': gmm.converged_
+                        }
+                    }
+                    break  # Sortir de la boucle immédiatement
                     
             except Exception as e:
                 print(f"⚠️ Erreur GMM avec {n_components} composantes: {e}")
                 continue
+        
+        # Affichage final uniforme
+        if best_config:
+            print(f"✅ Optimisation GMM terminée:")
+            print(f"   - Algorithme: GMM + EM")
+            print(f"   - {len(best_config['access_points'])} points d'accès placés")
+            final_coverage = best_config['stats']['coverage_percent']
+            covered = best_config['stats']['covered_points']
+            total = best_config['stats']['total_points']
+            print(f"   - {final_coverage:.1f}% de couverture ({covered}/{total} points)")
+            print(f"   - Score: {best_config['score']:.3f}")
+            print(f"   - Convergence: {best_config.get('gmm_metrics', {}).get('converged', 'Unknown')}")
+            
+            # Indiquer si arrêt anticipé
+            if best_config.get('early_stop', False):
+                reason = best_config.get('early_stop_reason', 'Objectif atteint')
+                print(f"   - Arrêt anticipé: {reason}")
+                print(f"   - Optimisation efficace: minimum de composantes pour l'objectif")
+            else:
+                print(f"   - Optimisation complète: meilleur score global selon AIC/BIC")
+        else:
+            print("❌ Aucune configuration GMM trouvée")
         
         return best_config, gmm_analysis
     
     def _evaluate_configuration(self, access_points, coverage_points, grid_info,
                                target_coverage_db, min_coverage_percent):
         """
-        Évalue une configuration de points d'accès.
-        Cette méthode doit être adaptée selon votre calculateur existant.
+        Évalue une configuration de points d'accès en utilisant le même calculateur que les autres algorithmes.
         """
-        # Calcul simplifié pour l'exemple - à remplacer par votre méthode réelle
         covered_points = 0
         total_points = len(coverage_points)
+        signal_levels = []
         
         for point in coverage_points:
             x_rx, y_rx = point
@@ -190,16 +239,33 @@ class GMMOptimizer:
             for ap in access_points:
                 x_tx, y_tx, power_tx = ap
                 
-                # Distance simple
-                distance = np.sqrt((x_rx - x_tx)**2 + (y_rx - y_tx)**2)
+                # Distance 2D
+                distance_2d = np.sqrt((x_rx - x_tx)**2 + (y_rx - y_tx)**2)
                 
-                # Estimation simple du pathloss (à remplacer par votre modèle ML)
-                pathloss = 40 + 20 * np.log10(max(distance, 0.1))
-                received_power = power_tx - pathloss
+                if distance_2d < 0.1:  # Très proche
+                    received_power = power_tx - 10
+                else:
+                    # Conversion en pixels pour comptage des murs
+                    x_tx_pixel = int(np.clip(x_tx / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                    y_tx_pixel = int(np.clip(y_tx / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                    x_rx_pixel = int(np.clip(x_rx / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                    y_rx_pixel = int(np.clip(y_rx / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                    
+                    # Comptage des murs
+                    wall_count = self.processor.count_walls_between_points(
+                        grid_info['walls_detected'],
+                        (x_tx_pixel, y_tx_pixel),
+                        (x_rx_pixel, y_rx_pixel)
+                    )
+                    
+                    # Calcul du pathloss unifié
+                    pathloss = self.pathloss_calculator.calculate_pathloss(distance_2d, wall_count)
+                    received_power = power_tx - pathloss
                 
                 if received_power > best_signal:
                     best_signal = received_power
             
+            signal_levels.append(best_signal)
             if best_signal >= target_coverage_db:
                 covered_points += 1
         
@@ -218,6 +284,7 @@ class GMMOptimizer:
             'covered_points': covered_points,
             'total_points': total_points,
             'coverage_percent': coverage_percent,
+            'signal_levels': signal_levels,
             'num_access_points': num_aps
         }
         
@@ -261,14 +328,31 @@ class GMMOptimizer:
                 ax1.annotate(f'AP{i+1}', (x, y), xytext=(5, 5), 
                            textcoords='offset points', fontweight='bold')
                 
-                # Ellipse de confiance (approximation pour covariance diagonale)
+                # Ellipse de confiance améliorée
                 if self.covariance_type == 'diag' and i < len(covariances):
                     std_x = np.sqrt(covariances[i][0])
                     std_y = np.sqrt(covariances[i][1])
                     
-                    ellipse = plt.Circle((x, y), 2*max(std_x, std_y), 
-                                       fill=False, color='red', alpha=0.5, linestyle='--')
+                    # Ellipse plus réaliste avec vraie ellipse au lieu de cercle
+                    from matplotlib.patches import Ellipse
+                    ellipse = Ellipse((x, y), width=4*std_x, height=4*std_y, 
+                                    fill=False, color='red', alpha=0.5, linestyle='--')
                     ax1.add_patch(ellipse)
+                elif self.covariance_type == 'full' and i < len(covariances):
+                    # Pour covariance complète, calculer les axes principaux
+                    cov = covariances[i]
+                    eigenvals, eigenvecs = np.linalg.eigh(cov)
+                    angle = np.degrees(np.arctan2(eigenvecs[1, 0], eigenvecs[0, 0]))
+                    width, height = 4 * np.sqrt(eigenvals)
+                    
+                    from matplotlib.patches import Ellipse
+                    ellipse = Ellipse((x, y), width=width, height=height, angle=angle,
+                                    fill=False, color='red', alpha=0.5, linestyle='--')
+                    ax1.add_patch(ellipse)
+                else:
+                    # Fallback: cercle simple
+                    circle = plt.Circle((x, y), 5.0, fill=False, color='red', alpha=0.5, linestyle='--')
+                    ax1.add_patch(circle)
             
             ax1.set_xlim(0, longueur)
             ax1.set_ylim(largeur, 0)
