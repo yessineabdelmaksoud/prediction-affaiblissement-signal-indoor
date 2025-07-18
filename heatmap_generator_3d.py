@@ -83,7 +83,7 @@ class HeatmapGenerator3D:
                         x_tx, y_tx, z_tx = emetteur['position_meter']
                         x_tx_pixel, y_tx_pixel = emetteur['position_pixel']
                         puissance_totale = emetteur['puissance_totale']
-                        directivite = emetteur['directivite']
+                        #directivite = emetteur['directivite']
                         
                         # Distance 3D
                         distance_3d = np.sqrt((x_meter - x_tx)**2 + (y_meter - y_tx)**2 + (z_meter - z_tx)**2)
@@ -109,12 +109,12 @@ class HeatmapGenerator3D:
                             )
                             
                             # Facteur de directivité
-                            if directivite == "Directif":
+                            #if directivite == "Directif":
                                 # Simplification: réduction de 3dB si dans la direction principale
-                                angle_factor = self._calculate_directivity_factor(
-                                    (x_tx, y_tx, z_tx), (x_meter, y_meter, z_meter)
-                                )
-                                pathloss *= angle_factor
+                            #    angle_factor = self._calculate_directivity_factor(
+                            #        (x_tx, y_tx, z_tx), (x_meter, y_meter, z_meter)
+                            #    )
+                            #    pathloss *= angle_factor
                             
                             # Puissance reçue
                             received_power = puissance_totale - pathloss
@@ -135,10 +135,11 @@ class HeatmapGenerator3D:
         
         return voxel_data, coordinates
     
+    """
     def _calculate_directivity_factor(self, pos_tx, pos_rx):
-        """
+        
         Calcule un facteur de directivité simplifié.
-        """
+        
         # Simplification: facteur basé sur la distance horizontale vs verticale
         dx = abs(pos_rx[0] - pos_tx[0])
         dy = abs(pos_rx[1] - pos_tx[1])
@@ -150,7 +151,8 @@ class HeatmapGenerator3D:
             return 0.7  # Pénalité pour direction non optimale
         else:
             return 1.0  # Direction optimale
-    
+    """
+            
     def visualize_voxel_heatmap(self, voxel_data, coordinates, emetteurs_3d, colormap='plasma'):
         """
         Visualise la heatmap 3D avec des voxels colorés.

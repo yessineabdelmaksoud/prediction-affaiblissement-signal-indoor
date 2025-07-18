@@ -6,6 +6,18 @@ import cv2
 
 class Visualizer3D:
     def __init__(self):
+        # Palette de couleurs pour les murs par étage
+        self.wall_colors = [
+            'darkslategray',    # Étage 1
+            'steelblue',        # Étage 2  
+            'darkolivegreen',   # Étage 3
+            'darkgoldenrod',    # Étage 4
+            'darkmagenta',      # Étage 5
+            'darkorange',       # Étage 6
+            'darkred',          # Étage 7
+            'darkslateblue',    # Étage 8
+        ]
+        
         self.colors = {
             'walls': 'gray',
             'floor': 'lightblue',
@@ -36,10 +48,13 @@ class Visualizer3D:
         scale_x = longueur / width
         scale_y = largeur / height
         
-        # Génération des murs pour chaque étage
+        # Génération des murs pour chaque étage avec couleurs différentes
         for etage in range(nb_etages):
             z_base = etage * hauteur_etage
             z_top = (etage + 1) * hauteur_etage
+            
+            # Sélection de la couleur pour cet étage
+            wall_color = self.wall_colors[etage % len(self.wall_colors)]
             
             # Extraction des contours des murs
             contours, _ = cv2.findContours(walls_2d, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -54,15 +69,16 @@ class Visualizer3D:
                         y_meter = y_pixel * scale_y
                         wall_points.append([x_meter, y_meter])
                     
-                    # Création des murs verticaux
-                    self._add_wall_3d(fig, wall_points, z_base, z_top, f"Mur_etage_{etage+1}")
+                    # Création des murs verticaux avec couleur spécifique à l'étage
+                    self._add_wall_3d(fig, wall_points, z_base, z_top, 
+                                    f"Murs étage {etage+1}", wall_color, etage)
         
         # Ajout des planchers et plafonds
         self._add_floors_ceilings(fig, longueur, largeur, nb_etages, hauteur_etage)
         
         # Configuration de la mise en page
         fig.update_layout(
-            title="Modèle 3D du Bâtiment",
+            title="Modèle 3D du Bâtiment - Murs colorés par étage",
             scene=dict(
                 xaxis_title="Longueur (m)",
                 yaxis_title="Largeur (m)",
@@ -78,12 +94,16 @@ class Visualizer3D:
         
         return fig
     
-    def _add_wall_3d(self, fig, wall_points, z_base, z_top, name):
+    def _add_wall_3d(self, fig, wall_points, z_base, z_top, name, wall_color=None, etage=0):
         """
-        Ajoute un mur 3D à la figure.
+        Ajoute un mur 3D à la figure avec une couleur spécifique.
         """
         if len(wall_points) < 3:
             return
+        
+        # Utiliser la couleur spécifiée ou la couleur par défaut
+        if wall_color is None:
+            wall_color = self.colors['walls']
         
         # Fermeture du contour si nécessaire
         if wall_points[0] != wall_points[-1]:
@@ -99,7 +119,7 @@ class Visualizer3D:
             x1, y1 = x_coords[i], y_coords[i]
             x2, y2 = x_coords[i + 1], y_coords[i + 1]
             
-            # Face rectangulaire du mur
+            # Face rectangulaire du mur avec couleur spécifique
             x_wall = [x1, x2, x2, x1, x1]
             y_wall = [y1, y2, y2, y1, y1]
             z_wall = [z_base, z_base, z_top, z_top, z_base]
@@ -109,12 +129,12 @@ class Visualizer3D:
                 y=y_wall,
                 z=z_wall,
                 mode='lines',
-                line=dict(color=self.colors['walls'], width=3),
+                line=dict(color=wall_color, width=3),
                 name=name,
                 showlegend=(i == 0)  # Afficher la légende seulement pour le premier segment
             ))
             
-            # Surface du mur (optionnel, pour un rendu plus réaliste)
+            # Surface du mur avec transparence et couleur spécifique
             fig.add_trace(go.Mesh3d(
                 x=[x1, x2, x2, x1],
                 y=[y1, y2, y2, y1],
@@ -122,9 +142,10 @@ class Visualizer3D:
                 i=[0, 0],
                 j=[1, 2],
                 k=[2, 3],
-                color=self.colors['walls'],
-                opacity=0.3,
-                showlegend=False
+                color=wall_color,
+                opacity=0.4,  # Légèrement plus opaque pour mieux voir les couleurs
+                showlegend=False,
+                name=f"Surface {name}"
             ))
     
     def _add_floors_ceilings(self, fig, longueur, largeur, nb_etages, hauteur_etage):
@@ -185,7 +206,7 @@ class Visualizer3D:
         Returns:
             fig: Figure Plotly 3D avec trajet
         """
-        # Création du modèle 3D de base
+        # Création du modèle 3D de base avec couleurs par étage
         fig = self.create_3d_building(walls_2d, longueur, largeur, nb_etages, hauteur_etage)
         
         x1, y1, z1 = point1_3d
@@ -197,7 +218,7 @@ class Visualizer3D:
             y=[y1, y2],
             z=[z1, z2],
             mode='lines+markers',
-            line=dict(color=self.colors['path'], width=4),
+            line=dict(color=self.colors['path'], width=6),  # Ligne plus épaisse pour visibilité
             marker=dict(size=8),
             name="Trajet direct 3D"
         ))
@@ -209,9 +230,9 @@ class Visualizer3D:
             z=[z1],
             mode='markers',
             marker=dict(
-                size=12,
+                size=15,  # Plus gros pour visibilité
                 color=self.colors['transmitter'],
-                symbol='circle',
+                symbol='diamond',
                 line=dict(width=2, color='black')
             ),
             name="Émetteur",
@@ -226,9 +247,9 @@ class Visualizer3D:
             z=[z2],
             mode='markers',
             marker=dict(
-                size=12,
+                size=15,  # Plus gros pour visibilité
                 color=self.colors['receiver'],
-                symbol='circle',
+                symbol='diamond',
                 line=dict(width=2, color='black')
             ),
             name="Récepteur",
@@ -239,9 +260,12 @@ class Visualizer3D:
         # Ajout des projections sur les plans pour aider la visualisation
         self._add_projections(fig, point1_3d, point2_3d, longueur, largeur, nb_etages * hauteur_etage)
         
+        # Ajout de la légende des couleurs par étage
+        self.add_floor_color_legend(fig, nb_etages)
+        
         # Mise à jour du titre
         fig.update_layout(
-            title="Visualisation 3D du Trajet RF",
+            title="Visualisation 3D du Trajet RF - Murs colorés par étage",
             scene=dict(
                 xaxis_title="Longueur (m)",
                 yaxis_title="Largeur (m)",
@@ -250,6 +274,12 @@ class Visualizer3D:
                 camera=dict(
                     eye=dict(x=1.8, y=1.8, z=1.2)
                 )
+            ),
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01
             )
         )
         
@@ -393,3 +423,34 @@ class Visualizer3D:
         )
         
         return fig
+
+    def add_floor_color_legend(self, fig, nb_etages):
+        """
+        Ajoute une légende des couleurs par étage.
+        """
+        # Ajouter des traces invisibles pour la légende
+        for etage in range(nb_etages):
+            wall_color = self.wall_colors[etage % len(self.wall_colors)]
+            
+            fig.add_trace(go.Scatter3d(
+                x=[None],
+                y=[None], 
+                z=[None],
+                mode='markers',
+                marker=dict(size=10, color=wall_color),
+                name=f"Étage {etage + 1}",
+                showlegend=True
+            ))
+        
+        return fig
+
+    def get_wall_color_info(self, nb_etages):
+        """
+        Retourne les informations sur les couleurs des murs par étage.
+        """
+        color_info = {}
+        for etage in range(nb_etages):
+            wall_color = self.wall_colors[etage % len(self.wall_colors)]
+            color_info[f"Étage {etage + 1}"] = wall_color
+        
+        return color_info
