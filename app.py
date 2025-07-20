@@ -11,6 +11,7 @@ from pathloss_calculator import PathlossCalculator
 from visualization import Visualizer
 from ml_pathloss_predictor_2d import ml_predictor_2d
 from ml_pathloss_predictor_3d import ml_predictor_3d
+from auto_optimization_interface import auto_optimization_2d_interface
 
 def display_ml_status():
     """
@@ -44,8 +45,16 @@ def main():
     st.title("Analyseur de Pathloss")
     st.markdown("---")
     
-    # Création des onglets
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Pathloss Calculator 2D", "Pathloss Calculator 3D", "Génération Heatmap 2D", "Génération Heatmap 3D", "Optimisation Points d'Accès 2D", "Optimisation Points d'Accès 3D"])
+    # Création des onglets (ajout du 7ème onglet)
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "Pathloss Calculator 2D", 
+        "Pathloss Calculator 3D", 
+        "Génération Heatmap 2D", 
+        "Génération Heatmap 3D", 
+        "Optimisation Points d'Accès 2D", 
+        "Optimisation Points d'Accès 3D",
+        "🎯 Optimisation Automatique 2D"
+    ])
     
     with tab1:
         pathloss_2d_interface()
@@ -64,6 +73,9 @@ def main():
     
     with tab6:
         optimization_3d_interface()
+    
+    with tab7:
+        auto_optimization_2d_interface()
 
 def pathloss_2d_interface():
     """Interface pour l'analyse 2D du pathloss"""
@@ -219,61 +231,6 @@ def pathloss_3d_interface():
         st.subheader("Murs détectés (plan de base)")
         st.image(processed_image, caption="Murs extraits pour duplication 3D", use_column_width=True)
         
-        # Bouton pour visualiser en 3D
-        if st.button("Visualiser le plan en 3D", key="visualize_3d"):
-            with st.spinner("Génération du modèle 3D..."):
-                try:
-                    # Importation dynamique pour éviter les erreurs
-                    from visualization_3d import Visualizer3D
-                    
-                    # Création du visualiseur 3D
-                    visualizer_3d = Visualizer3D()
-                    
-                    # Conversion des coordonnées
-                    height, width = image_array.shape[:2]
-                    scale_x = longueur / width
-                    scale_y = largeur / height
-                    
-                    # Génération du modèle 3D du bâtiment
-                    fig_3d = visualizer_3d.create_3d_building(
-                        walls_detected, 
-                        longueur, 
-                        largeur, 
-                        nb_etages, 
-                        hauteur_etage
-                    )
-                    
-                    st.subheader("🏢 Modèle 3D du bâtiment")
-                    st.plotly_chart(fig_3d, use_container_width=True)
-                    
-                    # Informations sur les couleurs par étage
-                    st.subheader("🎨 Légende des couleurs par étage")
-                    color_info = visualizer_3d.get_wall_color_info(nb_etages)
-                    
-                    # Affichage de la légende en colonnes
-                    cols = st.columns(min(nb_etages, 4))
-                    for i, (etage, couleur) in enumerate(color_info.items()):
-                        with cols[i % 4]:
-                            st.markdown(f"**{etage}**: `{couleur}`")
-                    
-                    # Informations techniques
-                    st.subheader("📊 Informations du modèle 3D")
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        st.metric("Volume total", f"{longueur * largeur * nb_etages * hauteur_etage:.1f} m³")
-                    with col2:
-                        st.metric("Surface par étage", f"{longueur * largeur:.1f} m²")
-                    with col3:
-                        st.metric("Hauteur totale", f"{nb_etages * hauteur_etage:.1f} m")
-                    with col4:
-                        st.metric("Nombre d'étages", nb_etages)
-                    
-                except ImportError:
-                    st.error("❌ Module de visualisation 3D non disponible. Installation en cours...")
-                except Exception as e:
-                    st.error(f"❌ Erreur lors de la génération du modèle 3D: {str(e)}")
-                    st.info("💡 Vérifiez que l'image contient des murs détectables (zones noires sur fond blanc)")
         
         # Visualisation interactive du plan
         if st.button("Visualisation Interactive 3D", key="interactive_3d"):
