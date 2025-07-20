@@ -4,7 +4,7 @@ Optimiseur GMM (Gaussian Mixture Model) pour placement de points d'accès WiFi 3
 
 Ce module implémente un algorithme d'optimisation basé sur les mélanges gaussiens
 pour optimiser le placement des points d'accès WiFi dans un environnement 3D.
-"""
+""" 
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,6 +12,8 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
 from typing import List, Tuple, Dict, Optional, Any
+from pathloss_calculator_3d import PathlossCalculator3D
+from image_processor import ImageProcessor
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -29,9 +31,11 @@ class GMMOptimizer3D:
         Initialise l'optimiseur GMM 3D.
         
         Args:
-            frequency: Fréquence de transmission en Hz
+            frequency: Fréquence de transmission en MHz
         """
-        self.frequency = frequency
+        self.frequency_mhz = frequency
+        self.calculator_3d = PathlossCalculator3D(frequency)
+        self.processor = ImageProcessor()
     
     def optimize_clustering_gmm_3d(self, coverage_points: List[Tuple[float, float, float]], 
                                   grid_info: Dict, longueur: float, largeur: float, hauteur_totale: float,
@@ -98,15 +102,8 @@ class GMMOptimizer3D:
                     y = np.clip(y, 1.0, largeur - 1.0)
                     z = np.clip(z, 0.5, hauteur_totale - 0.5)
                     
-                    # Vérification des murs (projection 2D)
-                    x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
-                    y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
-                    
-                    # Si dans un mur, ajuster la position
-                    if grid_info['walls_detected'][y_pixel, x_pixel] > 0:
-                        # Déplacer vers le centre de la zone libre la plus proche
-                        x = np.clip(x + np.random.uniform(-2, 2), 1.0, longueur - 1.0)
-                        y = np.clip(y + np.random.uniform(-2, 2), 1.0, largeur - 1.0)
+                    # Vérification et ajustement pour éviter les murs
+                    x, y = self._adjust_position_to_avoid_walls(x, y, grid_info, longueur, largeur)
                     
                     adjusted_centers.append((x, y, z, power_tx))
                 
@@ -153,8 +150,9 @@ class GMMOptimizer3D:
                 
                 # Arrêt anticipé si objectif atteint
                 if current_coverage >= min_coverage_percent:
-                    print(f"✅ Objectif GMM {min_coverage_percent}% atteint avec {n_components} composantes ({current_coverage:.1f}%)")
-                    break
+                    print(f"✅ GMM 3D: Objectif {min_coverage_percent}% atteint avec {n_components} composantes ({current_coverage:.1f}%)")
+                    print(f"🎯 Arrêt anticipé - Retour immédiat de la configuration optimale")
+                    return best_config, gmm_analysis
                     
             except Exception as e:
                 print(f"⚠️  Erreur GMM avec {n_components} composantes: {e}")
@@ -172,15 +170,61 @@ class GMMOptimizer3D:
         
         return best_config, gmm_analysis
     
+    def _adjust_position_to_avoid_walls(self, x: float, y: float, grid_info: Dict, 
+                                       longueur: float, largeur: float) -> Tuple[float, float]:
+        """
+        Ajuste une position pour éviter les murs en trouvant la position libre la plus proche.
+        
+        Args:
+            x, y: Position initiale
+            grid_info: Informations sur la grille
+            longueur, largeur: Dimensions
+            
+        Returns:
+            Tuple (x_ajusté, y_ajusté)
+        """
+        # Vérification si la position actuelle est dans un mur
+        x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+        y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+        
+        # Si pas dans un mur, retourner la position originale
+        if grid_info['walls_detected'][y_pixel, x_pixel] == 0:
+            return x, y
+        
+        # Recherche en spirale pour trouver une position libre
+        max_radius = 5  # Recherche dans un rayon de 5 mètres
+        for radius in range(1, max_radius + 1):
+            # Points sur le cercle de rayon 'radius'
+            for angle in np.arange(0, 2 * np.pi, np.pi / 8):  # 16 directions
+                test_x = x + radius * np.cos(angle)
+                test_y = y + radius * np.sin(angle)
+                
+                # Vérifier les contraintes de l'environnement
+                if test_x < 1.0 or test_x > longueur - 1.0:
+                    continue
+                if test_y < 1.0 or test_y > largeur - 1.0:
+                    continue
+                
+                # Convertir en pixels pour vérifier les murs
+                test_x_pixel = int(np.clip(test_x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                test_y_pixel = int(np.clip(test_y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                
+                # Si position libre trouvée
+                if grid_info['walls_detected'][test_y_pixel, test_x_pixel] == 0:
+                    return test_x, test_y
+        
+        # Si aucune position libre trouvée, retourner le centre de l'environnement
+        center_x = longueur / 2
+        center_y = largeur / 2
+        print(f"⚠️  Aucune position libre trouvée près de ({x:.1f}, {y:.1f}), utilisation du centre ({center_x:.1f}, {center_y:.1f})")
+        return center_x, center_y
+    
     def _evaluate_configuration_3d(self, access_points: List[Tuple[float, float, float, float]], 
                                   coverage_points: List[Tuple[float, float, float]], 
                                   grid_info: Dict, target_coverage_db: float, 
                                   min_coverage_percent: float) -> Tuple[float, Dict]:
         """
-        Évalue la qualité d'une configuration de points d'accès 3D.
-        
-        Cette méthode doit être adaptée par la classe parent pour utiliser
-        le bon calculateur de pathloss.
+        Évalue la qualité d'une configuration de points d'accès 3D avec PathlossCalculator3D.
         
         Args:
             access_points: Liste des points d'accès [(x, y, z, power), ...]
@@ -192,32 +236,69 @@ class GMMOptimizer3D:
         Returns:
             Tuple (score, statistiques)
         """
-        # Cette méthode sera remplacée par la classe parent
-        # qui a accès au calculateur de pathloss
-        
         if len(access_points) == 0:
             return 0.0, {'covered_points': 0, 'total_points': len(coverage_points), 'coverage_percent': 0.0}
         
-        # Calcul simple de distance pour évaluation de base
         covered_points = 0
+        signal_levels = []
         
         for point in coverage_points:
             x_rx, y_rx, z_rx = point
-            best_distance = float('inf')
+            best_signal = -200.0  # Très faible
             
             for ap in access_points:
                 x_tx, y_tx, z_tx, power_tx = ap
+                
+                # Distance 3D
                 distance_3d = np.sqrt((x_rx - x_tx)**2 + (y_rx - y_tx)**2 + (z_rx - z_tx)**2)
                 
-                if distance_3d < best_distance:
-                    best_distance = distance_3d
+                if distance_3d < 0.1:  # Très proche
+                    received_power = power_tx - 10
+                else:
+                    # Conversion en pixels pour comptage des murs
+                    x_tx_pixel = int(np.clip(x_tx / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                    y_tx_pixel = int(np.clip(y_tx / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                    x_rx_pixel = int(np.clip(x_rx / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                    y_rx_pixel = int(np.clip(y_rx / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                    
+                    # Validation des coordonnées pixel (amélioration de robustesse)
+                    if (x_tx_pixel == x_rx_pixel and y_tx_pixel == y_rx_pixel):
+                        # Même position en pixels, pas de murs à compter
+                        wall_count = 0
+                    else:
+                        # Comptage des murs avec gestion d'erreur robuste
+                        try:
+                            wall_count = self.processor.count_walls_between_points(
+                                grid_info['walls_detected'],
+                                (x_tx_pixel, y_tx_pixel),
+                                (x_rx_pixel, y_rx_pixel)
+                            )
+                        except:
+                            wall_count = 0  # Fallback en cas d'erreur
+                    
+                    # Différence d'étages (estimation)
+                    floor_tx = int(z_tx // 2.7)
+                    floor_rx = int(z_rx // 2.7)
+                    floor_difference = abs(floor_rx - floor_tx)
+                    
+                    # Calcul du pathloss avec PathlossCalculator3D
+                    pathloss = self.calculator_3d.calculate_pathloss_3d(
+                        distance_3d, wall_count, floor_difference
+                    )
+                    
+                    received_power = power_tx - pathloss
+                
+                # Garder le meilleur signal
+                if received_power > best_signal:
+                    best_signal = received_power
             
-            # Estimation simple: couvert si distance < seuil
-            coverage_threshold = 15.0  # mètres
-            if best_distance < coverage_threshold:
+            signal_levels.append(best_signal)
+            
+            # Vérifier si le point est couvert
+            if best_signal >= target_coverage_db:
                 covered_points += 1
         
-        # Statistiques de base
+        # Statistiques
         total_points = len(coverage_points)
         coverage_percent = (covered_points / total_points) * 100 if total_points > 0 else 0.0
         
@@ -233,11 +314,16 @@ class GMMOptimizer3D:
             score = 1.0 + coverage_score
             efficiency_penalty = (num_aps - 1) * 0.05
             score -= efficiency_penalty
+            
+            # Bonus supplémentaire pour dépassement significatif (harmonisation avec K-means)
+            if coverage_percent > min_coverage_percent + 5:
+                score += 0.2
         
         stats = {
             'covered_points': covered_points,
             'total_points': total_points,
             'coverage_percent': coverage_percent,
+            'signal_levels': signal_levels,
             'num_access_points': num_aps
         }
         
@@ -390,65 +476,3 @@ class GMMOptimizer3D:
         
         plt.tight_layout()
         return fig
-    
-    def compare_with_other_algorithms_3d(self, coverage_points: List[Tuple[float, float, float]], 
-                                        grid_info: Dict, longueur: float, largeur: float, hauteur_totale: float,
-                                        target_coverage_db: float, min_coverage_percent: float,
-                                        power_tx: float, max_access_points: int) -> Dict:
-        """
-        Compare l'algorithme GMM avec d'autres approches 3D.
-        
-        Args:
-            coverage_points, grid_info, longueur, largeur, hauteur_totale: Configuration de base
-            target_coverage_db, min_coverage_percent, power_tx, max_access_points: Paramètres d'optimisation
-            
-        Returns:
-            Dictionnaire avec les résultats comparatifs
-        """
-        
-        results = {}
-        
-        # Résultat GMM
-        gmm_result = self.optimize_clustering_gmm_3d(
-            coverage_points, grid_info, longueur, largeur, hauteur_totale,
-            target_coverage_db, min_coverage_percent, power_tx, max_access_points
-        )
-        
-        if gmm_result[0]:
-            config, analysis = gmm_result
-            results['gmm'] = {
-                'config': config,
-                'analysis': analysis,
-                'algorithm_name': 'GMM + EM'
-            }
-        
-        # Comparaison avec K-means simple
-        try:
-            points_array = np.array(coverage_points)
-            
-            # Test K-means avec même nombre de clusters que le meilleur GMM
-            best_n_components = results['gmm']['config']['n_components'] if 'gmm' in results else 3
-            
-            kmeans = KMeans(n_clusters=best_n_components, random_state=42, n_init=10)
-            kmeans.fit(points_array)
-            
-            kmeans_centers = [(center[0], center[1], center[2], power_tx) for center in kmeans.cluster_centers_]
-            kmeans_score, kmeans_stats = self._evaluate_configuration_3d(
-                kmeans_centers, coverage_points, grid_info, target_coverage_db, min_coverage_percent
-            )
-            
-            results['kmeans'] = {
-                'config': {
-                    'access_points': kmeans_centers,
-                    'score': kmeans_score,
-                    'stats': kmeans_stats,
-                    'n_clusters': best_n_components
-                },
-                'analysis': {'type': 'kmeans'},
-                'algorithm_name': 'K-means'
-            }
-            
-        except Exception as e:
-            print(f"⚠️  Erreur comparaison K-means: {e}")
-        
-        return results

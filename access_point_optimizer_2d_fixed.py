@@ -9,6 +9,7 @@ from pathloss_calculator import PathlossCalculator
 from image_processor import ImageProcessor
 from gmm_optimizer import GMMOptimizer 
 from greedy_optimizer import GreedyOptimizer
+from heatmap_generator import HeatmapGenerator
 
 class AccessPointOptimizer2D:
     def __init__(self, frequency_mhz):
@@ -390,58 +391,114 @@ class AccessPointOptimizer2D:
         ax1.legend()
         ax1.grid(True, alpha=0.3)
         
-        # === GRAPHIQUE 2: Heatmap de qualité de signal ===
+        # === GRAPHIQUE 2: Heatmap de qualité de signal avec HeatmapGenerator ===
         
-        # Génération d'une grille pour la heatmap
-        resolution_heatmap = 30
-        x_heat = np.linspace(0, longueur, resolution_heatmap)
-        y_heat = np.linspace(0, largeur, resolution_heatmap)
-        X_heat, Y_heat = np.meshgrid(x_heat, y_heat)
-        
-        signal_strength = np.zeros_like(X_heat)
-        
-        for i in range(resolution_heatmap):
-            for j in range(resolution_heatmap):
-                x_pos, y_pos = X_heat[i, j], Y_heat[i, j]
-                
-                # Vérifier si dans un mur
-                x_pixel = int(np.clip(x_pos / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
-                y_pixel = int(np.clip(y_pos / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
-                
-                if grid_info['walls_detected'][y_pixel, x_pixel] > 0:
-                    signal_strength[i, j] = -120  # Mur
-                else:
-                    best_signal = -200
-                    for ap_x, ap_y, power in access_points:
-                        distance = np.sqrt((x_pos - ap_x)**2 + (y_pos - ap_y)**2)
-                        if distance < 0.1:
-                            received = power - 10
-                        else:
-                            # Calcul simplifié pour la visualisation
-                            wall_count = int(distance * 0.3)  # Approximation
-                            pathloss = self.calculator.calculate_pathloss(distance, wall_count)
-                            received = power - pathloss
-                        
-                        if received > best_signal:
-                            best_signal = received
-                    
-                    signal_strength[i, j] = best_signal
-        
-        # Affichage de la heatmap
-        im = ax2.imshow(signal_strength, extent=[0, longueur, largeur, 0], 
-                       cmap='RdYlGn', vmin=-100, vmax=-30, alpha=0.8)
-        
-        # Contours de qualité
-        levels = [-90, -70, -50]
-        contours = ax2.contour(X_heat, Y_heat, signal_strength, levels=levels, 
-                              colors=['orange', 'yellow', 'green'], linewidths=2)
-        ax2.clabel(contours, inline=True, fontsize=8, fmt='%d dB')
-        
-        # Points d'accès sur la heatmap
+        # Préparation des données émetteur pour le HeatmapGenerator
+        emetteurs = []
         for i, (x, y, power) in enumerate(access_points):
-            ax2.scatter(x, y, c='black', s=150, marker='*', edgecolors='white', linewidth=2)
-            ax2.annotate(f'AP{i+1}', (x, y), xytext=(5, 5), textcoords='offset points', 
-                        fontsize=10, fontweight='bold', color='white')
+            # Conversion des coordonnées en pixels pour compatibilité
+            x_pixel = int(x / grid_info['scale_x'])
+            y_pixel = int(y / grid_info['scale_y'])
+            
+            emetteur_data = {
+                'position_meter': (x, y),
+                'position_pixel': (x_pixel, y_pixel),
+                'puissance_totale': power
+            }
+            emetteurs.append(emetteur_data)
+        
+        # Création du générateur de heatmap avec la même fréquence
+        heatmap_generator = HeatmapGenerator(self.frequency_mhz)
+        
+        # Génération de la heatmap avec palette coolwarm et résolution 100
+        try:
+            heatmap_data, extent, heatmap_fig = heatmap_generator.generate_heatmap_2d(
+                image_array=image_array,
+                walls_detected=grid_info['walls_detected'], 
+                emetteurs=emetteurs,
+                longueur=longueur,
+                largeur=largeur,
+                resolution=100,
+                colormap='coolwarm'
+            )
+            
+            # Récupération des données de la figure générée pour l'intégrer dans notre subplot
+            heatmap_ax = heatmap_fig.gca()
+            
+            # Copie des éléments de la heatmap vers notre ax2
+            for image in heatmap_ax.get_images():
+                # Copier l'image de la heatmap
+                ax2.imshow(image.get_array(), extent=image.get_extent(), 
+                          cmap=image.get_cmap(), alpha=0.8, 
+                          vmin=image.get_clim()[0], vmax=image.get_clim()[1])
+            
+            # Copie des cercles des émetteurs si présents
+            for patch in heatmap_ax.patches:
+                if isinstance(patch, plt.Circle):
+                    new_circle = plt.Circle(patch.center, patch.radius, 
+                                          color=patch.get_facecolor(), 
+                                          ec=patch.get_edgecolor(),
+                                          linewidth=patch.get_linewidth(),
+                                          zorder=10)
+                    ax2.add_patch(new_circle)
+            
+            # Copie des annotations
+            for text in heatmap_ax.texts:
+                ax2.annotate(text.get_text(), text.get_position(),
+                           xytext=(5, 5), textcoords='offset points',
+                           fontsize=10, fontweight='bold', color='white',
+                           zorder=11)
+            
+            # Fermer la figure temporaire
+            plt.close(heatmap_fig)
+            
+        except Exception as e:
+            print(f"⚠️ Erreur lors de la génération de la heatmap: {e}")
+            # Fallback vers l'ancienne méthode en cas d'erreur
+            # Génération d'une grille pour la heatmap
+            resolution_heatmap = 50
+            x_heat = np.linspace(0, longueur, resolution_heatmap)
+            y_heat = np.linspace(0, largeur, resolution_heatmap)
+            X_heat, Y_heat = np.meshgrid(x_heat, y_heat)
+            
+            signal_strength = np.zeros_like(X_heat)
+            
+            for i in range(resolution_heatmap):
+                for j in range(resolution_heatmap):
+                    x_pos, y_pos = X_heat[i, j], Y_heat[i, j]
+                    
+                    # Vérifier si dans un mur
+                    x_pixel = int(np.clip(x_pos / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                    y_pixel = int(np.clip(y_pos / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                    
+                    if grid_info['walls_detected'][y_pixel, x_pixel] > 0:
+                        signal_strength[i, j] = -120  # Mur
+                    else:
+                        best_signal = -200
+                        for ap_x, ap_y, power in access_points:
+                            distance = np.sqrt((x_pos - ap_x)**2 + (y_pos - ap_y)**2)
+                            if distance < 0.1:
+                                received = power - 10
+                            else:
+                                # Calcul simplifié pour la visualisation
+                                wall_count = int(distance * 0.3)  # Approximation
+                                pathloss = self.calculator.calculate_pathloss(distance, wall_count)
+                                received = power - pathloss
+                            
+                            if received > best_signal:
+                                best_signal = received
+                        
+                        signal_strength[i, j] = best_signal
+            
+            # Affichage de la heatmap de fallback avec coolwarm
+            im = ax2.imshow(signal_strength, extent=[0, longueur, largeur, 0], 
+                           cmap='coolwarm', vmin=-100, vmax=-30, alpha=0.8)
+            
+            # Points d'accès sur la heatmap de fallback
+            for i, (x, y, power) in enumerate(access_points):
+                ax2.scatter(x, y, c='black', s=150, marker='*', edgecolors='white', linewidth=2)
+                ax2.annotate(f'AP{i+1}', (x, y), xytext=(5, 5), textcoords='offset points', 
+                            fontsize=10, fontweight='bold', color='white')
         
         ax2.set_xlim(0, longueur)
         ax2.set_ylim(largeur, 0)
@@ -449,9 +506,16 @@ class AccessPointOptimizer2D:
         ax2.set_ylabel('Largeur (m)')
         ax2.set_title('Heatmap de Qualité du Signal (dBm)')
         
-        # Barre de couleur
-        cbar = plt.colorbar(im, ax=ax2)
-        cbar.set_label('Puissance du signal (dBm)')
+        # Barre de couleur (essayer de la récupérer de la heatmap générée)
+        try:
+            # Récupérer l'image pour la barre de couleur
+            images = ax2.get_images()
+            if images:
+                cbar = plt.colorbar(images[-1], ax=ax2)
+                cbar.set_label('Puissance du signal (dBm)')
+        except:
+            # Fallback sans barre de couleur si erreur
+            pass
         
         plt.tight_layout()
         return fig
@@ -561,335 +625,3 @@ class AccessPointOptimizer2D:
             return best_config, greedy_analysis
         else:
             return {'access_points': [], 'score': 0.0, 'stats': {}}, {}
-
-    def compare_algorithms_2d(self, coverage_points, grid_info, longueur, largeur,
-                             target_coverage_db=-70.0, min_coverage_percent=90.0,
-                             power_tx=20.0, max_access_points=6):
-        """
-        Compare les performances de K-means vs GMM vs Greedy sur le même jeu de données.
-        
-        Returns:
-            comparison_results: Résultats de comparaison
-        """
-        print("🔬 Comparaison K-means vs GMM vs Greedy...")
-        
-        # Test avec K-means
-        print("📊 Test K-means...")
-        kmeans_config, kmeans_analysis = self.optimize_with_algorithm_choice_2d(
-            coverage_points, grid_info, longueur, largeur,
-            target_coverage_db, min_coverage_percent, power_tx, max_access_points,
-            algorithm='kmeans'
-        )
-        
-        # Test avec GMM
-        print("📊 Test GMM...")
-        gmm_config, gmm_analysis = self.optimize_with_algorithm_choice_2d(
-            coverage_points, grid_info, longueur, largeur,
-            target_coverage_db, min_coverage_percent, power_tx, max_access_points,
-            algorithm='gmm'
-        )
-        
-        # Test avec Greedy
-        print("📊 Test Greedy...")
-        greedy_config, greedy_analysis = self.optimize_with_algorithm_choice_2d(
-            coverage_points, grid_info, longueur, largeur,
-            target_coverage_db, min_coverage_percent, power_tx, max_access_points,
-            algorithm='greedy'
-        )
-        
-        # Comparaison des résultats
-        comparison = {
-            'kmeans': {
-                'config': kmeans_config,
-                'analysis': kmeans_analysis,
-                'coverage_percent': kmeans_config['stats']['coverage_percent'] if kmeans_config else 0,
-                'num_access_points': len(kmeans_config['access_points']) if kmeans_config else 0,
-                'score': kmeans_config['score'] if kmeans_config else 0
-            },
-            'gmm': {
-                'config': gmm_config,
-                'analysis': gmm_analysis,
-                'coverage_percent': gmm_config['stats']['coverage_percent'] if gmm_config else 0,
-                'num_access_points': len(gmm_config['access_points']) if gmm_config else 0,
-                'score': gmm_config['score'] if gmm_config else 0
-            },
-            'greedy': {
-                'config': greedy_config,
-                'analysis': greedy_analysis,
-                'coverage_percent': greedy_config['stats']['coverage_percent'] if greedy_config else 0,
-                'num_access_points': len(greedy_config['access_points']) if greedy_config else 0,
-                'score': greedy_config['score'] if greedy_config else 0
-            }
-        }
-        
-        # Déterminer le meilleur algorithme
-        best_algorithm = None
-        best_score = -1
-        
-        for algo in ['kmeans', 'gmm', 'greedy']:
-            if comparison[algo]['config'] and comparison[algo]['score'] > best_score:
-                best_score = comparison[algo]['score']
-                best_algorithm = algo
-        
-        comparison['recommended'] = best_algorithm
-        
-        # Affichage standardisé des résultats
-        print("\n" + "="*80)
-        print("🏆 COMPARAISON FINALE DES ALGORITHMES")
-        print("="*80)
-        
-        # Afficher les résultats de chaque algorithme
-        if kmeans_config:
-            self.print_algorithm_summary("K-means", kmeans_config, kmeans_analysis)
-        
-        if gmm_config:
-            self.print_algorithm_summary("GMM", gmm_config, gmm_analysis)
-        
-        if greedy_config:
-            self.print_algorithm_summary("Greedy", greedy_config, greedy_analysis)
-        
-        # Recommandation finale
-        if best_algorithm:
-            algo_names = {'kmeans': 'K-means', 'gmm': 'GMM + EM', 'greedy': 'Greedy'}
-            print(f"🏆 ALGORITHME RECOMMANDÉ: {algo_names[best_algorithm]}")
-            print(f"📊 Score optimal: {best_score:.3f}")
-            
-            # Calculer l'amélioration par rapport aux autres
-            other_scores = [comparison[algo]['score'] for algo in ['kmeans', 'gmm', 'greedy'] 
-                          if algo != best_algorithm and comparison[algo]['config']]
-            if other_scores:
-                comparison['improvement'] = best_score - max(other_scores)
-                print(f"📈 Amélioration: +{comparison['improvement']:.3f} par rapport au 2ème meilleur")
-            else:
-                comparison['improvement'] = 0
-        else:
-            print("❌ Aucun algorithme n'a produit de résultat valide")
-        
-        print("="*80 + "\n")
-        
-        return comparison
-    
-    def visualize_algorithm_comparison_2d(self, comparison_results, coverage_points, 
-                                          grid_info, longueur, largeur, image_array):
-        """
-        Visualise la comparaison entre K-means, GMM et Greedy en utilisant le nouveau système unifié.
-        
-        Args:
-            comparison_results: Résultats de la comparaison
-            coverage_points: Points à couvrir
-            grid_info: Informations sur la grille
-            longueur, largeur: Dimensions
-            image_array: Image de fond
-            
-        Returns:
-            tuple: (figure comparative, figure performance)
-        """
-        
-        from wifi_visualization_comparator import create_algorithm_comparison_visualization
-        
-        try:
-            # Utiliser le nouveau système de visualisation unifié
-            comparison_fig, performance_fig = create_algorithm_comparison_visualization(
-                comparison_results, coverage_points, grid_info, 
-                longueur, largeur, image_array
-            )
-            
-            return comparison_fig, performance_fig
-            
-        except Exception as e:
-            print(f"⚠️ Erreur dans la visualisation unifiée: {e}")
-            # Fallback vers l'ancienne méthode
-            return self._visualize_algorithm_comparison_2d_fallback(
-                comparison_results, coverage_points, grid_info, 
-                longueur, largeur, image_array
-            )
-    
-    def _visualize_algorithm_comparison_2d_fallback(self, comparison_results, coverage_points, 
-                                                   grid_info, longueur, largeur, image_array):
-        """
-        Visualise la comparaison entre K-means, GMM et Greedy.
-        
-        Args:
-            comparison_results: Résultats de la comparaison
-            coverage_points: Points à couvrir
-            grid_info: Informations sur la grille
-            longueur, largeur: Dimensions
-            image_array: Image de fond
-            
-        Returns:
-            fig: Figure matplotlib avec comparaison
-        """
-        fig, axes = plt.subplots(2, 3, figsize=(20, 12))
-        fig.suptitle('Comparaison K-means vs GMM vs Greedy pour Optimisation WiFi 2D', 
-                    fontsize=16, fontweight='bold')
-        
-        # Configuration des sous-graphiques
-        algorithms = ['kmeans', 'gmm', 'greedy']
-        algorithm_names = ['K-means', 'GMM + EM', 'Greedy']
-        colors = ['blue', 'green', 'red']
-        
-        for idx, (algo, name, color) in enumerate(zip(algorithms, algorithm_names, colors)):
-            if algo in comparison_results and comparison_results[algo]['config']:
-                config = comparison_results[algo]['config']
-                access_points = config['access_points']
-                stats = config['stats']
-                
-                # Graphique des positions (ligne du haut)
-                ax_pos = axes[0, idx]
-                
-                # Image de fond
-                if image_array is not None:
-                    ax_pos.imshow(image_array, extent=[0, longueur, largeur, 0], cmap='gray', alpha=0.7)
-                
-                # Points de couverture
-                if len(coverage_points) < 300:  # Éviter la surcharge
-                    coverage_x = [p[0] for p in coverage_points]
-                    coverage_y = [p[1] for p in coverage_points]
-                    ax_pos.scatter(coverage_x, coverage_y, c='lightblue', s=8, alpha=0.4, label='Points à couvrir')
-                
-                # Points d'accès
-                for i, (x, y, power) in enumerate(access_points):
-                    ax_pos.scatter(x, y, c=color, s=200, marker='*', 
-                                 edgecolors='black', linewidth=2, zorder=5)
-                    
-                    # Rayon de couverture estimé
-                    estimated_range = max(3.0, min(12.0, power / 3.0))
-                    circle = plt.Circle((x, y), estimated_range, fill=False, 
-                                      color=color, alpha=0.6, linestyle='--')
-                    ax_pos.add_patch(circle)
-                    
-                    # Étiquette
-                    ax_pos.annotate(f'AP{i+1}', (x, y), xytext=(5, 5), 
-                                  textcoords='offset points', fontsize=9, 
-                                  fontweight='bold', color='white')
-                
-                ax_pos.set_xlim(0, longueur)
-                ax_pos.set_ylim(largeur, 0)
-                ax_pos.set_xlabel('Longueur (m)')
-                ax_pos.set_ylabel('Largeur (m)')
-                ax_pos.set_title(f'{name}\n{len(access_points)} AP - {stats["coverage_percent"]:.1f}% couverture')
-                ax_pos.grid(True, alpha=0.3)
-                if idx == 0 and len(coverage_points) < 300:
-                    ax_pos.legend(fontsize=8)
-                
-                # Métriques (ligne du bas)
-                ax_metrics = axes[1, idx]
-                
-                # Données pour le graphique en barres
-                metrics_names = ['Couverture\n(%)', 'Nb AP', 'Score\n(*10)', 'Points\nCouverts']
-                metrics_values = [
-                    stats['coverage_percent'],
-                    len(access_points),
-                    config['score'] * 10,  # Multiplié pour visibilité
-                    stats['covered_points']
-                ]
-                
-                bars = ax_metrics.bar(metrics_names, metrics_values, color=color, alpha=0.7)
-                
-                # Ajout des valeurs sur les barres
-                for bar, value, metric in zip(bars, metrics_values, metrics_names):
-                    height = bar.get_height()
-                    if 'Score' in metric:
-                        display_value = f'{value/10:.3f}'  # Valeur réelle du score
-                    elif 'Couverture' in metric:
-                        display_value = f'{value:.1f}%'
-                    else:
-                        display_value = f'{int(value)}'
-                    
-                    ax_metrics.text(bar.get_x() + bar.get_width()/2., height + max(metrics_values)*0.01,
-                                  display_value, ha='center', va='bottom', fontweight='bold')
-                
-                ax_metrics.set_title(f'Métriques {name}')
-                ax_metrics.set_ylabel('Valeur')
-                ax_metrics.grid(True, alpha=0.3, axis='y')
-                
-                # Informations supplémentaires spécifiques à chaque algorithme
-                info_text = ""
-                if algo == 'gmm' and 'gmm_metrics' in config:
-                    gmm_metrics = config['gmm_metrics']
-                    info_text = f"AIC: {gmm_metrics['aic']:.1f}\n"
-                    info_text += f"BIC: {gmm_metrics['bic']:.1f}\n"
-                    info_text += f"Convergé: {'Oui' if gmm_metrics['converged'] else 'Non'}"
-                elif algo == 'greedy' and 'steps' in comparison_results[algo]['analysis']:
-                    steps = comparison_results[algo]['analysis']['steps']
-                    info_text = f"Étapes: {len(steps)}\n"
-                    info_text += f"Itérations: {comparison_results[algo]['analysis']['total_iterations']}\n"
-                    info_text += f"Convergence: {comparison_results[algo]['analysis']['convergence_reason'][:20]}..."
-                elif algo == 'kmeans':
-                    info_text = f"Clusters: {len(access_points)}\n"
-                    info_text += f"Clustering rapide\n"
-                    info_text += f"Stable et efficace"
-                
-                if info_text:
-                    ax_metrics.text(0.02, 0.98, info_text, transform=ax_metrics.transAxes,
-                                  fontsize=8, verticalalignment='top',
-                                  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-        
-        # Résumé de comparaison
-        if 'recommended' in comparison_results:
-            recommended = comparison_results['recommended']
-            if recommended:
-                improvement = comparison_results.get('improvement', 0)
-                algo_names = {'kmeans': 'K-means', 'gmm': 'GMM + EM', 'greedy': 'Greedy'}
-                
-                summary_text = f"🏆 Algorithme recommandé: {algo_names[recommended]}\n"
-                summary_text += f"📈 Amélioration du score: +{improvement:.3f}"
-                
-                fig.text(0.5, 0.02, summary_text, ha='center', fontsize=12, 
-                        fontweight='bold', bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
-        
-        plt.tight_layout()
-        plt.subplots_adjust(bottom=0.1, top=0.93)
-        return fig
-    
-    def print_algorithm_summary(self, algorithm_name: str, config, analysis = None):
-        """
-        Affiche un résumé standardisé des résultats d'un algorithme.
-        
-        Args:
-            algorithm_name: Nom de l'algorithme (K-means, GMM, Greedy)
-            config: Configuration des points d'accès
-            analysis: Analyse optionnelle de l'algorithme
-        """
-        if not config or 'access_points' not in config:
-            print(f"❌ {algorithm_name}: Aucune configuration valide trouvée")
-            return
-        
-        stats = config.get('stats', {})
-        access_points = config['access_points']
-        
-        print(f"\n{'='*60}")
-        print(f"📊 RÉSUMÉ {algorithm_name.upper()}")
-        print(f"{'='*60}")
-        print(f"   🎯 Points d'accès placés: {len(access_points)}")
-        print(f"   📈 Couverture: {stats.get('coverage_percent', 0):.1f}% "
-              f"({stats.get('covered_points', 0)}/{stats.get('total_points', 0)} points)")
-        print(f"   🏆 Score global: {config.get('score', 0):.3f}")
-        
-        # Informations spécifiques par algorithme
-        if algorithm_name.lower() == 'greedy' and analysis:
-            print(f"   🔄 Itérations totales: {analysis.get('total_iterations', 0)}")
-            print(f"   🏁 Raison d'arrêt: {analysis.get('convergence_reason', 'Inconnue')}")
-            steps = analysis.get('steps', [])
-            if steps:
-                print(f"   📊 Étapes d'optimisation: {len(steps)}")
-        
-        elif algorithm_name.lower() == 'gmm' and 'gmm_metrics' in config:
-            metrics = config['gmm_metrics']
-            print(f"   🎲 Composantes optimales: {config.get('n_components', 'N/A')}")
-            print(f"   📉 AIC: {metrics.get('aic', 0):.1f}")
-            print(f"   📉 BIC: {metrics.get('bic', 0):.1f}")
-            print(f"   ✅ Convergence EM: {'Oui' if metrics.get('converged', False) else 'Non'}")
-        
-        elif algorithm_name.lower() == 'kmeans':
-            print(f"   🎯 Clusters: {len(access_points)}")
-            print(f"   ⚡ Algorithme rapide et stable")
-        
-        # Positions des points d'accès
-        print(f"   📍 Positions des AP:")
-        for i, (x, y, power) in enumerate(access_points[:5]):  # Limite à 5 pour l'affichage
-            print(f"      AP{i+1}: ({x:.1f}, {y:.1f}) - {power}dBm")
-        if len(access_points) > 5:
-            print(f"      ... et {len(access_points) - 5} autres AP")
-        
-        print(f"{'='*60}\n")

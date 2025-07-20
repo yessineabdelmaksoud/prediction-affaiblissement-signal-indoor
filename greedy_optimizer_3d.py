@@ -8,9 +8,11 @@ le placement des points d'accès WiFi dans un environnement 3D.
 
 import numpy as np
 import matplotlib.pyplot as plt
+import random
 from mpl_toolkits.mplot3d import Axes3D
 from typing import List, Tuple, Dict, Optional, Any
-import random
+from pathloss_calculator_3d import PathlossCalculator3D
+from image_processor import ImageProcessor
 
 
 class GreedyOptimizer3D:
@@ -26,16 +28,18 @@ class GreedyOptimizer3D:
         Initialise l'optimiseur Greedy 3D.
         
         Args:
-            frequency: Fréquence de transmission en Hz
+            frequency: Fréquence de transmission en MHz
         """
-        self.frequency = frequency
+        self.frequency_mhz = frequency
+        self.calculator_3d = PathlossCalculator3D(frequency)
+        self.processor = ImageProcessor()
     
     def optimize_greedy_placement_3d(self, coverage_points: List[Tuple[float, float, float]], 
                                     grid_info: Dict, longueur: float, largeur: float, hauteur_totale: float,
                                     target_coverage_db: float, min_coverage_percent: float, 
                                     power_tx: float, max_access_points: int) -> Tuple[Optional[Dict], Dict]:
         """
-        Optimise le placement des points d'accès 3D avec l'algorithme glouton.
+        Optimise le placement des points d'accès 3D avec l'algorithme glouton amélioré.
         
         Args:
             coverage_points: Liste des points à couvrir [(x, y, z), ...]
@@ -53,37 +57,33 @@ class GreedyOptimizer3D:
         if not coverage_points:
             return None, {}
         
-        print(f"🎯 Optimisation Greedy 3D: {len(coverage_points)} points à couvrir")
+        print(f"🎯 Optimisation Greedy 3D améliorée: {len(coverage_points)} points à couvrir")
         print(f"📦 Volume: {longueur}m x {largeur}m x {hauteur_totale}m")
+        print(f"🎯 Objectif: {min_coverage_percent}% de couverture")
         
         # Initialisation
         access_points = []
-        uncovered_points = set(range(len(coverage_points)))
         placement_history = []
+        current_coverage = 0.0
         
-        # Génération de positions candidates
-        candidate_positions = self._generate_candidate_positions_3d(
-            longueur, largeur, hauteur_totale, grid_info
+        # Génération intelligente de positions candidates
+        candidate_positions = self._generate_smart_candidate_positions_3d(
+            coverage_points, longueur, largeur, hauteur_totale, grid_info
         )
         
-        print(f"🔍 {len(candidate_positions)} positions candidates générées")
-        print(f"🎯 Objectif: {min_coverage_percent}% de couverture")
+        print(f"🔍 {len(candidate_positions)} positions candidates générées intelligemment")
         
-        # Placement glouton
+        # Placement glouton avec arrêt anticipé
         for ap_index in range(max_access_points):
-            # Évaluation initiale
-            if ap_index == 0:
-                current_score, current_stats = self._evaluate_configuration_3d(
-                    access_points, coverage_points, grid_info, 
-                    target_coverage_db, min_coverage_percent
-                )
-                print(f"🎯 État initial: {current_stats['coverage_percent']:.1f}% couverture")
+            print(f"\n🔍 Recherche position optimale pour AP{ap_index + 1}")
             
-            # Recherche de la meilleure position pour le prochain AP
+            # Recherche de la meilleure position
             best_position = None
             best_improvement = 0.0
             best_stats = None
+            best_efficiency = 0.0
             
+            # Évaluation de chaque position candidate
             for candidate_pos in candidate_positions:
                 # Test de cette position
                 test_access_points = access_points + [(candidate_pos[0], candidate_pos[1], candidate_pos[2], power_tx)]
@@ -93,45 +93,71 @@ class GreedyOptimizer3D:
                     target_coverage_db, min_coverage_percent
                 )
                 
-                improvement = test_stats['coverage_percent'] - current_stats['coverage_percent']
+                improvement = test_stats['coverage_percent'] - current_coverage
                 
-                if improvement > best_improvement:
+                # Calcul d'efficacité (amélioration par rapport à la distance aux autres APs)
+                efficiency = self._calculate_position_efficiency_3d(candidate_pos, access_points, improvement)
+                
+                # Sélection basée sur l'amélioration ET l'efficacité
+                if improvement > best_improvement or (improvement == best_improvement and efficiency > best_efficiency):
                     best_improvement = improvement
                     best_position = candidate_pos
                     best_stats = test_stats
+                    best_efficiency = efficiency
             
-            # Ajout du meilleur point d'accès trouvé
-            if best_position and best_improvement > 0.1:  # Amélioration minimale de 0.1%
+            # Vérification si un placement est bénéfique
+            if best_position and best_improvement > 0.05:  # Seuil d'amélioration minimale
                 new_ap = (best_position[0], best_position[1], best_position[2], power_tx)
                 access_points.append(new_ap)
                 
                 placement_history.append({
                     'ap_index': ap_index + 1,
                     'position': best_position,
-                    'coverage_before': current_stats['coverage_percent'],
+                    'coverage_before': current_coverage,
                     'coverage_after': best_stats['coverage_percent'],
                     'improvement': best_improvement,
+                    'efficiency': best_efficiency,
                     'covered_points': best_stats['covered_points'],
                     'total_points': best_stats['total_points']
                 })
                 
-                current_stats = best_stats
+                current_coverage = best_stats['coverage_percent']
                 
-                print(f"📍 AP{ap_index + 1} placé à ({best_position[0]:.1f}, {best_position[1]:.1f}, {best_position[2]:.1f})")
-                print(f"   ➜ Couverture: {current_stats['coverage_percent']:.1f}% (+{best_improvement:.1f}%)")
+                print(f"✅ AP{ap_index + 1} placé à ({best_position[0]:.1f}, {best_position[1]:.1f}, {best_position[2]:.1f})")
+                print(f"   ➜ Couverture: {current_coverage:.1f}% (+{best_improvement:.1f}%)")
+                print(f"   ➜ Efficacité: {best_efficiency:.3f}")
                 
-                # Vérification si objectif atteint
-                if current_stats['coverage_percent'] >= min_coverage_percent:
-                    print(f"✅ Objectif Greedy {min_coverage_percent}% atteint avec {len(access_points)} points d'accès!")
-                    break
+                # Arrêt anticipé si objectif atteint
+                if current_coverage >= min_coverage_percent:
+                    print(f"🎯 Objectif {min_coverage_percent}% atteint avec {len(access_points)} APs!")
+                    print(f"✅ Arrêt anticipé - Retour immédiat de la configuration optimale")
+                    
+                    # Configuration optimale trouvée - retour immédiat
+                    config = {
+                        'access_points': access_points,
+                        'score': best_stats.get('score', current_coverage / 100.0),
+                        'stats': best_stats,
+                        'algorithm': 'greedy_3d',
+                        'placement_steps': len(access_points)
+                    }
+                    
+                    analysis = {
+                        'placement_history': placement_history,
+                        'initial_candidates': len(candidate_positions),
+                        'final_candidates': len(candidate_positions),
+                        'convergence_step': len(access_points),
+                        'early_stopping': True
+                    }
+                    
+                    return config, analysis
                 
-                # Mise à jour des positions candidates (éviter trop proche)
-                candidate_positions = self._filter_candidate_positions(
+                # Filtrage intelligent des positions candidates pour éviter la proximité
+                candidate_positions = self._filter_candidates_around_position_3d(
                     candidate_positions, best_position, min_distance=3.0
                 )
                 
             else:
-                print(f"⚠️  Aucune amélioration significative trouvée pour AP{ap_index + 1}")
+                print(f"🛑 Arrêt: Aucune amélioration significative (< 0.05%) pour AP{ap_index + 1}")
                 break
         
         # Configuration finale
@@ -145,15 +171,16 @@ class GreedyOptimizer3D:
                 'access_points': access_points,
                 'score': final_score,
                 'stats': final_stats,
-                'algorithm': 'greedy',
+                'algorithm': 'greedy_3d',
                 'placement_steps': len(access_points)
             }
             
             analysis = {
                 'placement_history': placement_history,
-                'candidate_positions_used': len(candidate_positions),
-                'total_evaluations': len(candidate_positions) * len(access_points),
-                'convergence_step': len(access_points)
+                'initial_candidates': len(candidate_positions),
+                'final_candidates': len(candidate_positions),
+                'convergence_step': len(access_points),
+                'early_stopping': final_stats['coverage_percent'] >= min_coverage_percent
             }
             
             final_coverage = final_stats['coverage_percent']
@@ -168,143 +195,327 @@ class GreedyOptimizer3D:
             print("❌ Aucun point d'accès n'a pu être placé")
             return None, {}
     
-    def _generate_candidate_positions_3d(self, longueur: float, largeur: float, hauteur_totale: float, 
-                                        grid_info: Dict) -> List[Tuple[float, float, float]]:
+    def _generate_smart_candidate_positions_3d(self, coverage_points: List[Tuple[float, float, float]], 
+                                              longueur: float, largeur: float, hauteur_totale: float, 
+                                              grid_info: Dict) -> List[Tuple[float, float, float]]:
         """
-        Génère des positions candidates pour les points d'accès 3D.
+        Génère des positions candidates intelligentes basées sur la densité des points de couverture.
         
         Args:
+            coverage_points: Points à couvrir
             longueur, largeur, hauteur_totale: Dimensions
             grid_info: Informations sur la grille
             
         Returns:
-            Liste des positions candidates
+            Liste optimisée des positions candidates
         """
+        print("🧠 Génération intelligente des positions candidates 3D...")
+        
         candidate_positions = []
         
-        # Stratégie 1: Grille régulière 3D
-        x_step = max(2.0, longueur / 10)
-        y_step = max(2.0, largeur / 10)
-        z_step = max(1.0, hauteur_totale / 8)
+        # Stratégie 1: Positions basées sur la densité des points de couverture
+        density_positions = self._get_density_based_positions_3d(coverage_points, longueur, largeur, hauteur_totale)
+        for pos in density_positions:
+            if self._is_valid_ap_position_3d(pos[0], pos[1], pos[2], grid_info, longueur, largeur, hauteur_totale):
+                # Ajustement pour éviter les murs si nécessaire
+                adjusted_pos = self._adjust_position_to_avoid_walls(pos[0], pos[1], grid_info, longueur, largeur)
+                final_pos = (adjusted_pos[0], adjusted_pos[1], pos[2])
+                candidate_positions.append(final_pos)
         
-        for x in np.arange(x_step, longueur - x_step, x_step):
-            for y in np.arange(y_step, largeur - y_step, y_step):
-                for z in np.arange(z_step, hauteur_totale - z_step, z_step):
-                    # Vérification que la position n'est pas dans un mur (projection 2D)
-                    if self._is_valid_position(x, y, z, grid_info, longueur, largeur, hauteur_totale):
-                        candidate_positions.append((x, y, z))
+        # Stratégie 2: Grille stratégique 3D
+        strategic_positions = self._get_strategic_grid_positions_3d(longueur, largeur, hauteur_totale)
+        for pos in strategic_positions:
+            if self._is_valid_ap_position_3d(pos[0], pos[1], pos[2], grid_info, longueur, largeur, hauteur_totale):
+                # Ajustement pour éviter les murs si nécessaire
+                adjusted_pos = self._adjust_position_to_avoid_walls(pos[0], pos[1], grid_info, longueur, largeur)
+                final_pos = (adjusted_pos[0], adjusted_pos[1], pos[2])
+                candidate_positions.append(final_pos)
         
-        # Stratégie 2: Positions aléatoires pour diversité
-        for _ in range(200):
-            x = random.uniform(1.0, longueur - 1.0)
-            y = random.uniform(1.0, largeur - 1.0)
-            z = random.uniform(0.5, hauteur_totale - 0.5)
+        # Stratégie 3: Positions centrales par étage optimisées
+        floor_positions = self._get_floor_centered_positions_3d(longueur, largeur, hauteur_totale)
+        for pos in floor_positions:
+            if self._is_valid_ap_position_3d(pos[0], pos[1], pos[2], grid_info, longueur, largeur, hauteur_totale):
+                # Ajustement pour éviter les murs si nécessaire
+                adjusted_pos = self._adjust_position_to_avoid_walls(pos[0], pos[1], grid_info, longueur, largeur)
+                final_pos = (adjusted_pos[0], adjusted_pos[1], pos[2])
+                candidate_positions.append(final_pos)
+        
+        # Suppression des doublons et tri par qualité
+        unique_positions = self._remove_duplicate_positions_3d(candidate_positions)
+        
+        print(f"✨ {len(unique_positions)} positions candidates intelligentes générées")
+        return unique_positions
+    
+    def _get_density_based_positions_3d(self, coverage_points: List[Tuple[float, float, float]], 
+                                       longueur: float, largeur: float, hauteur_totale: float) -> List[Tuple[float, float, float]]:
+        """
+        Génère des positions basées sur la densité des points de couverture en 3D.
+        """
+        positions = []
+        
+        if not coverage_points:
+            return positions
+        
+        # Division en cubes 3D
+        num_cubes_x = max(3, int(longueur // 4))
+        num_cubes_y = max(3, int(largeur // 4))
+        num_cubes_z = max(2, int(hauteur_totale // 3))
+        
+        cube_size_x = longueur / num_cubes_x
+        cube_size_y = largeur / num_cubes_y
+        cube_size_z = hauteur_totale / num_cubes_z
+        
+        # Comptage des points par cube
+        cube_counts = {}
+        for point in coverage_points:
+            x, y, z = point
+            cube_i = min(int(x // cube_size_x), num_cubes_x - 1)
+            cube_j = min(int(y // cube_size_y), num_cubes_y - 1)
+            cube_k = min(int(z // cube_size_z), num_cubes_z - 1)
             
-            if self._is_valid_position(x, y, z, grid_info, longueur, largeur, hauteur_totale):
-                candidate_positions.append((x, y, z))
+            cube_key = (cube_i, cube_j, cube_k)
+            cube_counts[cube_key] = cube_counts.get(cube_key, 0) + 1
         
-        # Stratégie 3: Positions centrales par étage
+        # Sélection des cubes les plus denses
+        sorted_cubes = sorted(cube_counts.items(), key=lambda x: x[1], reverse=True)
+        top_cubes = sorted_cubes[:min(12, len(sorted_cubes))]  # Top 12 cubes
+        
+        # Placement au centre des cubes denses
+        for (cube_i, cube_j, cube_k), count in top_cubes:
+            center_x = (cube_i + 0.5) * cube_size_x
+            center_y = (cube_j + 0.5) * cube_size_y
+            center_z = (cube_k + 0.5) * cube_size_z
+            
+            # Ajustement pour éviter les bords
+            center_x = np.clip(center_x, 1.0, longueur - 1.0)
+            center_y = np.clip(center_y, 1.0, largeur - 1.0)
+            center_z = np.clip(center_z, 0.5, hauteur_totale - 0.5)
+            
+            positions.append((center_x, center_y, center_z))
+        
+        return positions
+    
+    def _get_strategic_grid_positions_3d(self, longueur: float, largeur: float, hauteur_totale: float) -> List[Tuple[float, float, float]]:
+        """
+        Génère une grille stratégique de positions 3D.
+        """
+        positions = []
+        
+        # Grille adaptative basée sur la taille
+        if longueur * largeur * hauteur_totale < 200:  # Petit volume
+            x_positions = [longueur * 0.5]
+            y_positions = [largeur * 0.5]
+        elif longueur * largeur * hauteur_totale < 1000:  # Volume moyen
+            x_positions = [longueur * 0.3, longueur * 0.7]
+            y_positions = [largeur * 0.3, largeur * 0.7]
+        else:  # Grand volume
+            x_positions = [longueur * 0.2, longueur * 0.5, longueur * 0.8]
+            y_positions = [largeur * 0.2, largeur * 0.5, largeur * 0.8]
+        
+        # Positions Z par étage
         num_floors = max(1, int(hauteur_totale // 2.7))
+        z_positions = []
         for floor in range(num_floors):
-            z = (floor + 0.5) * 2.7
-            if z < hauteur_totale:
-                # Centre de l'étage
-                center_x, center_y = longueur / 2, largeur / 2
-                if self._is_valid_position(center_x, center_y, z, grid_info, longueur, largeur, hauteur_totale):
-                    candidate_positions.append((center_x, center_y, z))
-                
-                # Coins de l'étage
-                corners = [
-                    (longueur * 0.25, largeur * 0.25, z),
-                    (longueur * 0.75, largeur * 0.25, z),
-                    (longueur * 0.25, largeur * 0.75, z),
-                    (longueur * 0.75, largeur * 0.75, z)
-                ]
-                
-                for corner_x, corner_y, corner_z in corners:
-                    if self._is_valid_position(corner_x, corner_y, corner_z, grid_info, longueur, largeur, hauteur_totale):
-                        candidate_positions.append((corner_x, corner_y, corner_z))
+            z = (floor + 0.4) * (hauteur_totale / num_floors)  # Légèrement au-dessus du centre de l'étage
+            z_positions.append(min(z, hauteur_totale - 0.5))
         
-        # Suppression des doublons
+        # Combinaisons stratégiques
+        for x in x_positions:
+            for y in y_positions:
+                for z in z_positions:
+                    positions.append((x, y, z))
+        
+        return positions
+    
+    def _get_floor_centered_positions_3d(self, longueur: float, largeur: float, hauteur_totale: float) -> List[Tuple[float, float, float]]:
+        """
+        Génère des positions centrées optimisées par étage.
+        """
+        positions = []
+        
+        num_floors = max(1, int(hauteur_totale // 2.7))
+        
+        for floor in range(num_floors):
+            z = (floor + 0.6) * 2.7  # Position légèrement élevée dans l'étage
+            if z >= hauteur_totale:
+                z = hauteur_totale - 0.5
+            
+            # Centre principal
+            center_x, center_y = longueur * 0.5, largeur * 0.5
+            positions.append((center_x, center_y, z))
+            
+            # Positions secondaires pour grands espaces
+            if longueur > 15 or largeur > 15:
+                positions.extend([
+                    (longueur * 0.25, largeur * 0.5, z),
+                    (longueur * 0.75, largeur * 0.5, z),
+                    (longueur * 0.5, largeur * 0.25, z),
+                    (longueur * 0.5, largeur * 0.75, z)
+                ])
+        
+        return positions
+    
+    def _remove_duplicate_positions_3d(self, positions: List[Tuple[float, float, float]]) -> List[Tuple[float, float, float]]:
+        """
+        Supprime les positions dupliquées avec une tolérance 3D.
+        """
         unique_positions = []
-        for pos in candidate_positions:
+        tolerance = 0.8  # Distance minimale entre positions
+        
+        for pos in positions:
             is_duplicate = False
             for existing_pos in unique_positions:
                 distance = np.sqrt(sum((pos[i] - existing_pos[i])**2 for i in range(3)))
-                if distance < 0.5:  # Seuil de proximité
+                if distance < tolerance:
                     is_duplicate = True
                     break
+            
             if not is_duplicate:
                 unique_positions.append(pos)
         
         return unique_positions
     
-    def _is_valid_position(self, x: float, y: float, z: float, grid_info: Dict, 
-                          longueur: float, largeur: float, hauteur_totale: float) -> bool:
+    def _is_valid_ap_position_3d(self, x: float, y: float, z: float, grid_info: Dict, 
+                                longueur: float, largeur: float, hauteur_totale: float) -> bool:
         """
-        Vérifie si une position 3D est valide pour placer un point d'accès.
+        Vérifie si une position 3D est valide pour placer un point d'accès avec marges de sécurité.
+        """
+        # Marges de sécurité plus larges
+        margin_xy = 1.5
+        margin_z = 0.5
         
-        Args:
-            x, y, z: Coordonnées de la position
-            grid_info: Informations sur la grille
-            longueur, largeur, hauteur_totale: Dimensions
-            
-        Returns:
-            True si la position est valide
-        """
-        # Vérification des limites
-        if x < 0.5 or x > longueur - 0.5:
+        # Vérification des limites avec marges
+        if x < margin_xy or x > longueur - margin_xy:
             return False
-        if y < 0.5 or y > largeur - 0.5:
+        if y < margin_xy or y > largeur - margin_xy:
             return False
-        if z < 0.3 or z > hauteur_totale - 0.3:
+        if z < margin_z or z > hauteur_totale - margin_z:
             return False
         
-        # Vérification des murs (projection 2D)
+        # Vérification des murs (projection 2D) avec zone de sécurité
         try:
+            # Vérification du point central
             x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
             y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
             
-            # Si dans un mur, position invalide
             if grid_info['walls_detected'][y_pixel, x_pixel] > 0:
                 return False
-        except:
+            
+            # Vérification de la zone autour (3x3 pixels)
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    check_x = int(np.clip((x_pixel + dx), 0, grid_info['walls_detected'].shape[1] - 1))
+                    check_y = int(np.clip((y_pixel + dy), 0, grid_info['walls_detected'].shape[0] - 1))
+                    
+                    if grid_info['walls_detected'][check_y, check_x] > 0:
+                        return False
+            
+        except Exception:
             return False
         
         return True
     
-    def _filter_candidate_positions(self, candidate_positions: List[Tuple[float, float, float]], 
-                                   placed_position: Tuple[float, float, float], 
-                                   min_distance: float) -> List[Tuple[float, float, float]]:
+    def _calculate_position_efficiency_3d(self, candidate_pos: Tuple[float, float, float], 
+                                        existing_aps: List[Tuple[float, float, float, float]], 
+                                        improvement: float) -> float:
         """
-        Filtre les positions candidates pour éviter la proximité avec un AP déjà placé.
+        Calcule l'efficacité d'une position candidate en 3D.
+        """
+        if not existing_aps:
+            return improvement
+        
+        # Distance minimale aux APs existants
+        min_distance = float('inf')
+        for ap in existing_aps:
+            distance = np.sqrt(sum((candidate_pos[i] - ap[i])**2 for i in range(3)))
+            min_distance = min(min_distance, distance)
+        
+        # Calcul du facteur de distance par rapport à la distance optimale
+        optimal_distance = 8.0  # Distance optimale en mètres
+        distance_factor = 1.0
+        
+        if min_distance < 3.0:  # Trop proche
+            distance_factor = 0.3
+        elif min_distance < 6.0:  # Proche mais acceptable
+            distance_factor = 0.7
+        elif min_distance <= optimal_distance + 4.0:  # Distance optimale (8-12m)
+            distance_factor = 1.0
+        else:  # Trop loin
+            distance_factor = 0.8
+        
+        return improvement * distance_factor
+    
+    def _filter_candidates_around_position_3d(self, candidates: List[Tuple[float, float, float]], 
+                                            placed_position: Tuple[float, float, float], 
+                                            min_distance: float) -> List[Tuple[float, float, float]]:
+        """
+        Filtre les candidats trop proches d'une position placée en 3D.
+        """
+        filtered = []
+        
+        for candidate in candidates:
+            distance = np.sqrt(sum((candidate[i] - placed_position[i])**2 for i in range(3)))
+            if distance >= min_distance:
+                filtered.append(candidate)
+        
+        return filtered
+    
+    def _adjust_position_to_avoid_walls(self, x: float, y: float, grid_info: Dict, 
+                                       longueur: float, largeur: float) -> Tuple[float, float]:
+        """
+        Ajuste une position pour éviter les murs en trouvant la position libre la plus proche.
         
         Args:
-            candidate_positions: Positions candidates
-            placed_position: Position d'un AP déjà placé
-            min_distance: Distance minimale requise
+            x, y: Position initiale
+            grid_info: Informations sur la grille
+            longueur, largeur: Dimensions
             
         Returns:
-            Liste filtrée des positions candidates
+            Tuple (x_ajusté, y_ajusté)
         """
-        filtered_positions = []
+        # Vérification si la position actuelle est dans un mur
+        x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+        y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
         
-        for pos in candidate_positions:
-            distance = np.sqrt(sum((pos[i] - placed_position[i])**2 for i in range(3)))
-            if distance >= min_distance:
-                filtered_positions.append(pos)
+        # Si pas dans un mur, retourner la position originale
+        if grid_info['walls_detected'][y_pixel, x_pixel] == 0:
+            return x, y
         
-        return filtered_positions
+        # Recherche en spirale pour trouver une position libre
+        max_radius = 5  # Recherche dans un rayon de 5 mètres
+        for radius in range(1, max_radius + 1):
+            # Points sur le cercle de rayon 'radius'
+            for angle in np.arange(0, 2 * np.pi, np.pi / 8):  # 16 directions
+                test_x = x + radius * np.cos(angle)
+                test_y = y + radius * np.sin(angle)
+                
+                # Vérifier les contraintes de l'environnement
+                if test_x < 1.0 or test_x > longueur - 1.0:
+                    continue
+                if test_y < 1.0 or test_y > largeur - 1.0:
+                    continue
+                
+                # Convertir en pixels pour vérifier les murs
+                test_x_pixel = int(np.clip(test_x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                test_y_pixel = int(np.clip(test_y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                
+                # Si position libre trouvée
+                if grid_info['walls_detected'][test_y_pixel, test_x_pixel] == 0:
+                    return test_x, test_y
+        
+        # Si aucune position libre trouvée, retourner le centre de l'environnement
+        center_x = longueur / 2
+        center_y = largeur / 2
+        print(f"⚠️  Aucune position libre trouvée près de ({x:.1f}, {y:.1f}), utilisation du centre ({center_x:.1f}, {center_y:.1f})")
+        return center_x, center_y
+
     
     def _evaluate_configuration_3d(self, access_points: List[Tuple[float, float, float, float]], 
                                   coverage_points: List[Tuple[float, float, float]], 
                                   grid_info: Dict, target_coverage_db: float, 
                                   min_coverage_percent: float) -> Tuple[float, Dict]:
         """
-        Évalue la qualité d'une configuration de points d'accès 3D.
-        
-        Cette méthode doit être adaptée par la classe parent pour utiliser
-        le bon calculateur de pathloss.
+        Évalue la qualité d'une configuration de points d'accès 3D avec PathlossCalculator3D.
         
         Args:
             access_points: Liste des points d'accès [(x, y, z, power), ...]
@@ -316,53 +527,94 @@ class GreedyOptimizer3D:
         Returns:
             Tuple (score, statistiques)
         """
-        # Cette méthode sera remplacée par la classe parent
-        # qui a accès au calculateur de pathloss
-        
         if len(access_points) == 0:
             return 0.0, {'covered_points': 0, 'total_points': len(coverage_points), 'coverage_percent': 0.0}
         
-        # Calcul simple de distance pour évaluation de base
         covered_points = 0
+        signal_levels = []
         
         for point in coverage_points:
             x_rx, y_rx, z_rx = point
-            best_distance = float('inf')
+            best_signal = -200.0  # Très faible
             
             for ap in access_points:
                 x_tx, y_tx, z_tx, power_tx = ap
+                
+                # Distance 3D
                 distance_3d = np.sqrt((x_rx - x_tx)**2 + (y_rx - y_tx)**2 + (z_rx - z_tx)**2)
                 
-                if distance_3d < best_distance:
-                    best_distance = distance_3d
+                if distance_3d < 0.1:  # Très proche
+                    received_power = power_tx - 10
+                else:
+                    # Conversion en pixels pour comptage des murs
+                    x_tx_pixel = int(np.clip(x_tx / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                    y_tx_pixel = int(np.clip(y_tx / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                    x_rx_pixel = int(np.clip(x_rx / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                    y_rx_pixel = int(np.clip(y_rx / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                    
+                    # Validation des coordonnées pixel (amélioration de robustesse)
+                    if (x_tx_pixel == x_rx_pixel and y_tx_pixel == y_rx_pixel):
+                        # Même position en pixels, pas de murs à compter
+                        wall_count = 0
+                    else:
+                        # Comptage des murs avec gestion d'erreur robuste
+                        try:
+                            wall_count = self.processor.count_walls_between_points(
+                                grid_info['walls_detected'],
+                                (x_tx_pixel, y_tx_pixel),
+                                (x_rx_pixel, y_rx_pixel)
+                            )
+                        except:
+                            wall_count = 0  # Fallback en cas d'erreur
+                    
+                    # Différence d'étages (estimation)
+                    floor_tx = int(z_tx // 2.7)
+                    floor_rx = int(z_rx // 2.7)
+                    floor_difference = abs(floor_rx - floor_tx)
+                    
+                    # Calcul du pathloss avec PathlossCalculator3D
+                    pathloss = self.calculator_3d.calculate_pathloss_3d(
+                        distance_3d, wall_count, floor_difference
+                    )
+                    
+                    received_power = power_tx - pathloss
+                
+                # Garder le meilleur signal
+                if received_power > best_signal:
+                    best_signal = received_power
             
-            # Estimation simple: couvert si distance < seuil
-            coverage_threshold = 12.0  # mètres (plus conservateur que GMM)
-            if best_distance < coverage_threshold:
+            signal_levels.append(best_signal)
+            
+            # Vérifier si le point est couvert
+            if best_signal >= target_coverage_db:
                 covered_points += 1
         
-        # Statistiques de base
+        # Statistiques
         total_points = len(coverage_points)
         coverage_percent = (covered_points / total_points) * 100 if total_points > 0 else 0.0
         
-        # Score favorisant d'abord l'atteinte de l'objectif
+        # Score favorisant d'abord l'atteinte de l'objectif (harmonisation avec GMM et K-means)
         num_aps = len(access_points)
         coverage_score = coverage_percent / 100.0
         
-        # Score greedy: privilégie fortement la couverture
         if coverage_percent < min_coverage_percent:
-            score = coverage_score * 3.0  # Bonus important pour coverage
-            efficiency_penalty = num_aps * 0.005  # Pénalité très faible
+            score = coverage_score * 2.0
+            efficiency_penalty = num_aps * 0.01
             score -= efficiency_penalty
         else:
-            score = 2.0 + coverage_score  # Bonus énorme si objectif atteint
-            efficiency_penalty = (num_aps - 1) * 0.02  # Pénalité modérée pour efficacité
+            score = 1.0 + coverage_score
+            efficiency_penalty = (num_aps - 1) * 0.05
             score -= efficiency_penalty
+            
+            # Bonus supplémentaire pour dépassement significatif (harmonisation avec K-means)
+            if coverage_percent > min_coverage_percent + 5:
+                score += 0.2
         
         stats = {
             'covered_points': covered_points,
             'total_points': total_points,
             'coverage_percent': coverage_percent,
+            'signal_levels': signal_levels,
             'num_access_points': num_aps
         }
         

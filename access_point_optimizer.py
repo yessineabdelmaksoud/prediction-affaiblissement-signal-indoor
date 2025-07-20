@@ -3,7 +3,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 from scipy.optimize import differential_evolution, minimize
 from sklearn.cluster import KMeans
-import pandas as pd
+import pandas as pd 
+from typing import Dict, Tuple, List
 from pathloss_calculator_3d import PathlossCalculator3D
 from image_processor import ImageProcessor
 from gmm_optimizer_3d import GMMOptimizer3D
@@ -20,9 +21,9 @@ class AccessPointOptimizer:
         self.frequency_mhz = frequency_mhz
         self.calculator_3d = PathlossCalculator3D(frequency_mhz)
         self.processor = ImageProcessor()
-        # Initialisation des optimiseurs spécialisés
-        self.gmm_optimizer = GMMOptimizer3D(frequency_mhz)
-        self.greedy_optimizer = GreedyOptimizer3D(frequency_mhz)
+        # Initialisation des optimiseurs spécialisés (correction de fréquence)
+        self.gmm_optimizer = GMMOptimizer3D(frequency_mhz)  # MHz au lieu de Hz
+        self.greedy_optimizer = GreedyOptimizer3D(frequency_mhz)  # MHz au lieu de Hz
         
     def generate_coverage_zones(self, walls_detected, longueur, largeur, hauteur_totale, 
                                resolution_xy=20, resolution_z=8):
@@ -105,21 +106,30 @@ class AccessPointOptimizer:
                 # Distance 3D
                 distance_3d = np.sqrt((x_rx - x_tx)**2 + (y_rx - y_tx)**2 + (z_rx - z_tx)**2)
                 
-                if distance_3d < 0.1:  # Très proche
-                    received_power = power_tx - 10
+                if distance_3d < 0.1:  # Très proche - éviter division par zéro
+                    # 🔧 HARMONISATION: Même logique que GMM pour comparaison équitable
+                    received_power = power_tx - 10  # Aligné sur GMM
                 else:
-                    # Conversion en pixels pour comptage des murs
+                    # Conversion en pixels pour comptage des murs (avec validation)
                     x_tx_pixel = int(np.clip(x_tx / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
                     y_tx_pixel = int(np.clip(y_tx / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
                     x_rx_pixel = int(np.clip(x_rx / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
                     y_rx_pixel = int(np.clip(y_rx / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
                     
-                    # Comptage des murs
-                    wall_count = self.processor.count_walls_between_points(
-                        grid_info['walls_detected'],
-                        (x_tx_pixel, y_tx_pixel),
-                        (x_rx_pixel, y_rx_pixel)
-                    )
+                    # Validation des coordonnées pixel
+                    if (x_tx_pixel == x_rx_pixel and y_tx_pixel == y_rx_pixel):
+                        # Même position en pixels, pas de murs à compter
+                        wall_count = 0
+                    else:
+                        # Comptage des murs avec gestion d'erreur
+                        try:
+                            wall_count = self.processor.count_walls_between_points(
+                                grid_info['walls_detected'],
+                                (x_tx_pixel, y_tx_pixel),
+                                (x_rx_pixel, y_rx_pixel)
+                            )
+                        except:
+                            wall_count = 0  # Fallback en cas d'erreur
                     
                     # Différence d'étages (estimation)
                     floor_tx = int(z_tx // 2.7)
@@ -147,17 +157,26 @@ class AccessPointOptimizer:
         total_points = len(coverage_points)
         coverage_percent = (covered_points / total_points) * 100 if total_points > 0 else 0.0
         
-        # Score de qualité (pénalise le nombre d'AP tout en favorisant la couverture)
+        # Score de qualité amélioré - favorise d'abord l'atteinte de l'objectif de couverture
         num_aps = len(access_points)
         coverage_score = coverage_percent / 100.0
-        efficiency_penalty = num_aps * 0.05  # Pénalité pour trop d'AP
         
-        # Score final
-        score = coverage_score - efficiency_penalty
-        
-        # Bonus si on atteint l'objectif minimal
-        if coverage_percent >= min_coverage_percent:
-            score += 0.5
+        # Système de scoring inspiré du GMM - privilégier la couverture avant l'efficacité
+        if coverage_percent < min_coverage_percent:
+            # Si objectif non atteint, pénaliser fortement et favoriser plus d'AP
+            score = coverage_score * 2.0  # Doubler l'importance de la couverture
+            efficiency_penalty = num_aps * 0.01  # Pénalité très faible pour encourager plus d'AP
+            score -= efficiency_penalty
+        else:
+            # Si objectif atteint, alors optimiser l'efficacité
+            score = 1.0 + coverage_score  # Bonus de base pour avoir atteint l'objectif
+            # 🔧 HARMONISATION: Même pénalité que GMM pour comparaison équitable
+            efficiency_penalty = (num_aps - 1) * 0.05  # Aligné sur GMM (était 0.03)
+            score -= efficiency_penalty
+            
+            # Bonus supplémentaire pour dépassement significatif de l'objectif
+            if coverage_percent > min_coverage_percent + 5:
+                score += 0.2
         
         coverage_stats = {
             'covered_points': covered_points,
@@ -169,181 +188,306 @@ class AccessPointOptimizer:
         
         return max(score, 0.0), coverage_stats
     
-    def optimize_access_points_genetic(self, coverage_points, grid_info, longueur, largeur, 
-                                     hauteur_totale, target_coverage_db=-70.0, 
-                                     min_coverage_percent=90.0, max_access_points=8,
-                                     power_tx=20.0):
-        """
-        Optimise le placement des points d'accès avec un algorithme génétique.
-        
-        Args:
-            coverage_points: Points à couvrir
-            grid_info: Informations sur la grille
-            longueur, largeur, hauteur_totale: Dimensions
-            target_coverage_db: Signal minimal requis
-            min_coverage_percent: Couverture minimale
-            max_access_points: Nombre maximal d'AP
-            power_tx: Puissance de transmission
-            
-        Returns:
-            best_config: Meilleure configuration trouvée
-            optimization_history: Historique de l'optimisation
-        """
-        def objective_function(x):
-            """Fonction objectif pour l'optimisation"""
-            # Décodage des paramètres
-            num_aps = int(x[0])
-            if num_aps == 0:
-                return 1000.0  # Pénalité pour 0 AP
-            
-            access_points = []
-            for i in range(num_aps):
-                if i * 4 + 3 < len(x):
-                    ap_x = x[i * 4 + 1] * longueur
-                    ap_y = x[i * 4 + 2] * largeur
-                    ap_z = x[i * 4 + 3] * hauteur_totale
-                    access_points.append((ap_x, ap_y, ap_z, power_tx))
-            
-            if len(access_points) == 0:
-                return 1000.0
-            
-            score, _ = self.calculate_coverage_quality(
-                access_points, coverage_points, grid_info,
-                target_coverage_db, min_coverage_percent
-            )
-            
-            return -score  # Minimisation (négatif du score)
-        
-        # Limites pour l'optimisation
-        # [num_aps, x1, y1, z1, x2, y2, z2, ...]
-        bounds = [(1, max_access_points)]  # Nombre d'AP
-        for i in range(max_access_points):
-            bounds.extend([(0.1, 0.9), (0.1, 0.9), (0.1, 0.9)])  # x, y, z normalisés
-        
-        # Optimisation
-        print("Début de l'optimisation génétique...")
-        result = differential_evolution(
-            objective_function,
-            bounds,
-            maxiter=50,
-            popsize=15,
-            seed=42,
-            atol=1e-3,
-            tol=1e-3
-        )
-        
-        # Décodage du résultat
-        x_opt = result.x
-        num_aps_opt = int(x_opt[0])
-        
-        optimized_access_points = []
-        for i in range(num_aps_opt):
-            if i * 4 + 3 < len(x_opt):
-                ap_x = x_opt[i * 4 + 1] * longueur
-                ap_y = x_opt[i * 4 + 2] * largeur
-                ap_z = x_opt[i * 4 + 3] * hauteur_totale
-                optimized_access_points.append((ap_x, ap_y, ap_z, power_tx))
-        
-        # Calcul des statistiques finales
-        final_score, final_stats = self.calculate_coverage_quality(
-            optimized_access_points, coverage_points, grid_info,
-            target_coverage_db, min_coverage_percent
-        )
-        
-        best_config = {
-            'access_points': optimized_access_points,
-            'score': final_score,
-            'stats': final_stats,
-            'optimization_result': result
-        }
-        
-        optimization_history = {
-            'function_evaluations': result.nfev,
-            'success': result.success,
-            'final_score': final_score
-        }
-        
-        return best_config, optimization_history
-    
     def optimize_with_clustering(self, coverage_points, grid_info, longueur, largeur, 
                                 hauteur_totale, target_coverage_db=-70.0, 
-                                min_coverage_percent=90.0, power_tx=20.0):
+                                min_coverage_percent=90.0, power_tx=20.0, max_access_points=8):
         """
-        Optimise en utilisant le clustering pour placer les AP près des centres de zones.
+        Optimise le placement des points d'accès 3D avec K-means clustering.
+        
+        Cette méthode suit le même flux de travail que l'algorithme GMM :
+        1. Test de différents nombres de clusters
+        2. Application du K-means pour chaque nombre
+        3. Ajustement des positions pour éviter les murs
+        4. Évaluation de chaque configuration
+        5. Arrêt anticipé si l'objectif est atteint
         
         Args:
-            coverage_points: Points à couvrir
+            coverage_points: Liste des points à couvrir [(x, y, z), ...]
             grid_info: Informations sur la grille
             longueur, largeur, hauteur_totale: Dimensions
-            target_coverage_db: Signal minimal requis
-            min_coverage_percent: Couverture minimale
-            power_tx: Puissance de transmission
+            target_coverage_db: Niveau de signal minimum requis (dBm)
+            min_coverage_percent: Pourcentage minimum de couverture requis
+            power_tx: Puissance de transmission (dBm)
+            max_access_points: Nombre maximum de points d'accès
             
         Returns:
-            best_config: Meilleure configuration trouvée
-            cluster_analysis: Analyse des clusters
+            Tuple (configuration, analyse) ou (None, {}) si échec
         """
-        if len(coverage_points) == 0:
-            return {'access_points': [], 'score': 0.0, 'stats': {}}, {}
+        if not coverage_points:
+            return None, {}
+        
+        # Import du module sklearn (avec gestion d'erreur)
+        try:
+            from sklearn.cluster import KMeans
+        except ImportError:
+            print("❌ Erreur: sklearn n'est pas installé. Installation nécessaire pour K-means.")
+            return None, {}
         
         # Conversion en array numpy
         points_array = np.array(coverage_points)
+        
+        print(f"🔄 Optimisation K-means 3D: {len(coverage_points)} points à couvrir")
+        print(f"📦 Volume: {longueur}m x {largeur}m x {hauteur_totale}m")
         
         best_config = None
         best_score = -1.0
         cluster_analysis = {}
         
-        # Test différents nombres de clusters (AP)
-        for num_clusters in range(1, 9):
-            # Clustering K-means
-            kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
-            cluster_labels = kmeans.fit_predict(points_array)
-            cluster_centers = kmeans.cluster_centers_
-            
-            # Ajustement des centres pour éviter les murs
-            adjusted_centers = []
-            for center in cluster_centers:
-                x, y, z = center
+        # Test différents nombres de clusters (points d'accès) - même logique que GMM
+        max_clusters = min(max_access_points, 15)
+        print(f"🔬 Test K-means: 1 à {max_clusters} clusters (objectif {min_coverage_percent}%)")
+        
+        for num_clusters in range(1, max_clusters + 1):
+            try:
+                # Configuration K-means optimisée pour WiFi 3D
+                # Utilisation d'une initialisation plus sophistiquée
+                kmeans = KMeans(
+                    n_clusters=num_clusters,
+                    init='k-means++',  # Initialisation intelligente
+                    max_iter=500,      # Plus d'itérations pour convergence
+                    n_init=20,         # Plus d'essais pour meilleur optimum
+                    random_state=42,   # Reproductibilité
+                    tol=1e-6,          # Tolérance plus stricte
+                    algorithm='elkan'  # Algorithme optimisé pour données denses
+                )
                 
-                # Vérification si dans un mur
-                x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
-                y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                # Ajustement du modèle
+                kmeans.fit(points_array)
                 
-                # Si dans un mur, déplacer vers le point le plus proche qui n'est pas dans un mur
-                if grid_info['walls_detected'][y_pixel, x_pixel] > 0:
-                    # Trouver le point du cluster le plus proche qui n'est pas dans un mur
-                    cluster_points = points_array[cluster_labels == len(adjusted_centers)]
-                    if len(cluster_points) > 0:
-                        # Prendre le centroïde des points valides
-                        x, y, z = np.mean(cluster_points, axis=0)
+                # Extraction des centres des clusters
+                centers = kmeans.cluster_centers_
+                cluster_labels = kmeans.labels_
                 
-                adjusted_centers.append((x, y, z, power_tx))
-            
-            # Évaluation de cette configuration
-            score, stats = self.calculate_coverage_quality(
-                adjusted_centers, coverage_points, grid_info,
-                target_coverage_db, min_coverage_percent
-            )
-            
-            cluster_analysis[num_clusters] = {
-                'centers': adjusted_centers,
-                'score': score,
-                'stats': stats,
-                'cluster_labels': cluster_labels
-            }
-            
-            # Mise à jour du meilleur score
-            if score > best_score:
-                best_score = score
-                best_config = {
-                    'access_points': adjusted_centers,
+                # Ajustement des centres pour éviter les murs et contraintes 3D
+                # Méthode améliorée inspirée de GMM avec pondération par densité
+                adjusted_centers = []
+                for i, center in enumerate(centers):
+                    x, y, z = center
+                    
+                    # Contraintes de positionnement (identiques au GMM)
+                    x = np.clip(x, 1.0, longueur - 1.0)
+                    y = np.clip(y, 1.0, largeur - 1.0)
+                    z = np.clip(z, 0.5, hauteur_totale - 0.5)
+                    
+                    # Vérification et ajustement pour éviter les murs (même méthode que GMM)
+                    x, y = self._adjust_position_to_avoid_walls(x, y, grid_info, longueur, largeur)
+                    
+                    adjusted_centers.append((x, y, z, power_tx))
+                
+                # Évaluation de cette configuration (même méthode que GMM)
+                score, stats = self.calculate_coverage_quality(
+                    adjusted_centers, coverage_points, grid_info, 
+                    target_coverage_db, min_coverage_percent
+                )
+                
+                # Métriques K-means (adaptation des métriques GMM)
+                kmeans_metrics = {
+                    'inertia': kmeans.inertia_,              # SSE (Sum of Squared Errors)
+                    'n_iter': kmeans.n_iter_,                # Nombre d'itérations
+                    'cluster_centers': kmeans.cluster_centers_.tolist(),
+                    'cluster_sizes': [np.sum(cluster_labels == i) for i in range(num_clusters)],
+                    'converged': kmeans.n_iter_ < kmeans.max_iter  # Test de convergence
+                }
+                
+                cluster_analysis[num_clusters] = {
+                    'centers': adjusted_centers,
                     'score': score,
                     'stats': stats,
-                    'num_clusters': num_clusters
+                    'kmeans_metrics': kmeans_metrics,
+                    'cluster_labels': cluster_labels.tolist(),
+                    'original_centers': kmeans.cluster_centers_.tolist()
                 }
+                
+                # Mise à jour du meilleur score (même logique que GMM)
+                if score > best_score:
+                    best_score = score
+                    best_config = {
+                        'access_points': adjusted_centers,
+                        'score': score,
+                        'stats': stats,
+                        'kmeans_metrics': kmeans_metrics,
+                        'n_clusters': num_clusters
+                    }
+                
+                # Affichage du progrès (format similaire au GMM)
+                current_coverage = stats.get('coverage_percent', 0.0)
+                inertia = kmeans_metrics['inertia']
+                print(f"🔄 {num_clusters} clusters: {current_coverage:.1f}% couverture (Inertie: {inertia:.1f}, Conv: {'Oui' if kmeans_metrics['converged'] else 'Non'})")
+                
+                # Arrêt anticipé si objectif atteint (comme GMM)
+                # GMM s'arrête immédiatement quand l'objectif est atteint
+                if current_coverage >= min_coverage_percent:
+                    print(f"✅ K-means: Objectif {min_coverage_percent}% atteint avec {num_clusters} clusters ({current_coverage:.1f}%)")
+                    print(f"🎯 Arrêt anticipé - Retour immédiat de la configuration optimale")
+                    break
+                    
+            except Exception as e:
+                print(f"⚠️  Erreur K-means avec {num_clusters} clusters: {e}")
+                cluster_analysis[num_clusters] = {
+                    'error': str(e),
+                    'score': 0.0,
+                    'stats': {'coverage_percent': 0.0}
+                }
+        
+        # Validation finale (même logique que GMM)
+        if best_config and best_config['stats']['coverage_percent'] < min_coverage_percent:
+            coverage_achieved = best_config['stats']['coverage_percent']
+            print(f"⚠️  K-means 3D: Objectif {min_coverage_percent}% non atteint. Meilleur: {coverage_achieved:.1f}%")
+            print(f"💡 Recommandation: Augmenter la puissance TX ou ajouter plus de points d'accès")
+        elif best_config:
+            coverage_achieved = best_config['stats']['coverage_percent']
+            n_aps = len(best_config['access_points'])
+            print(f"🎉 K-means 3D: Succès! {coverage_achieved:.1f}% de couverture avec {n_aps} points d'accès")
         
         return best_config, cluster_analysis
     
+    def _adjust_position_to_avoid_walls(self, x: float, y: float, grid_info: Dict, 
+                                       longueur: float, largeur: float) -> Tuple[float, float]:
+        """
+        Ajuste une position pour éviter les murs en trouvant la position libre la plus proche.
+        IDENTIQUE à la méthode GMM pour harmonisation complète.
+        
+        Args:
+            x, y: Position initiale
+            grid_info: Informations sur la grille
+            longueur, largeur: Dimensions
+            
+        Returns:
+            Tuple (x_ajusté, y_ajusté)
+        """
+        # Vérification si la position actuelle est dans un mur
+        x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+        y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+        
+        # Si pas dans un mur, retourner la position originale
+        if grid_info['walls_detected'][y_pixel, x_pixel] == 0:
+            return x, y
+        
+        # Recherche en spirale pour trouver une position libre
+        max_radius = 5  # Recherche dans un rayon de 5 mètres
+        for radius in range(1, max_radius + 1):
+            # Points sur le cercle de rayon 'radius'
+            for angle in np.arange(0, 2 * np.pi, np.pi / 8):  # 16 directions
+                test_x = x + radius * np.cos(angle)
+                test_y = y + radius * np.sin(angle)
+                
+                # Vérifier les contraintes de l'environnement
+                if test_x < 1.0 or test_x > longueur - 1.0:
+                    continue
+                if test_y < 1.0 or test_y > largeur - 1.0:
+                    continue
+                
+                # Convertir en pixels pour vérifier les murs
+                test_x_pixel = int(np.clip(test_x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                test_y_pixel = int(np.clip(test_y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                
+                # Si position libre trouvée
+                if grid_info['walls_detected'][test_y_pixel, test_x_pixel] == 0:
+                    return test_x, test_y
+        
+        # Si aucune position libre trouvée, retourner le centre de l'environnement
+        center_x = longueur / 2
+        center_y = largeur / 2
+        print(f"⚠️  Aucune position libre trouvée près de ({x:.1f}, {y:.1f}), utilisation du centre ({center_x:.1f}, {center_y:.1f})")
+        return center_x, center_y
+
+    def _adjust_position_to_avoid_walls_kmeans_improved(self, x: float, y: float, cluster_idx: int, 
+                                                       cluster_labels: np.ndarray, points_array: np.ndarray,
+                                                       grid_info: dict, longueur: float, largeur: float) -> tuple:
+        """
+        Ajuste une position pour éviter les murs en K-means (version améliorée inspirée du GMM).
+        
+        Args:
+            x, y: Position initiale
+            cluster_idx: Index du cluster
+            cluster_labels: Labels des clusters
+            points_array: Array des points
+            grid_info: Informations sur la grille
+            longueur, largeur: Dimensions
+            
+        Returns:
+            Tuple (x_ajusté, y_ajusté)
+        """
+        # Vérification si la position actuelle est dans un mur
+        x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+        y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+        
+        # Si pas dans un mur, retourner la position originale
+        if grid_info['walls_detected'][y_pixel, x_pixel] == 0:
+            return x, y
+        
+        # Stratégie 1: Chercher dans les points du cluster (comme GMM mais amélioré)
+        cluster_points = points_array[cluster_labels == cluster_idx]
+        
+        if len(cluster_points) > 0:
+            # Trier par distance pour garder la cohérence du clustering
+            center_3d = np.array([x, y, cluster_points[:, 2].mean()])  # Centre 3D approximatif
+            distances = np.sqrt(np.sum((cluster_points - center_3d)**2, axis=1))
+            sorted_indices = np.argsort(distances)
+            
+            # Essayer les points les plus proches du centre original
+            for idx in sorted_indices[:min(10, len(sorted_indices))]:  # Limiter à 10 points max
+                px, py, pz = cluster_points[idx]
+                px_pixel = int(np.clip(px / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                py_pixel = int(np.clip(py / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                
+                # Si ce point n'est pas dans un mur, l'utiliser
+                if grid_info['walls_detected'][py_pixel, px_pixel] == 0:
+                    return px, py
+        
+        # Stratégie 2: Recherche en spirale (méthode GMM simplifiée)
+        max_radius = 5  # Comme dans GMM
+        for radius in range(1, max_radius + 1):
+            # 16 directions comme dans GMM
+            for angle in np.arange(0, 2 * np.pi, np.pi / 8):
+                test_x = x + radius * np.cos(angle)
+                test_y = y + radius * np.sin(angle)
+                
+                # Vérifier les contraintes de l'environnement
+                if test_x < 1.0 or test_x > longueur - 1.0:
+                    continue
+                if test_y < 1.0 or test_y > largeur - 1.0:
+                    continue
+                
+                # Convertir en pixels pour vérifier les murs
+                test_x_pixel = int(np.clip(test_x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                test_y_pixel = int(np.clip(test_y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                
+                # Si position libre trouvée
+                if grid_info['walls_detected'][test_y_pixel, test_x_pixel] == 0:
+                    return test_x, test_y
+        
+        # Stratégie 3: Centre de l'environnement (comme GMM)
+        center_x = longueur / 2
+        center_y = largeur / 2
+        print(f"⚠️  K-means cluster {cluster_idx}: Utilisation du centre ({center_x:.1f}, {center_y:.1f})")
+        return center_x, center_y
+    
+    def _find_any_valid_position(self, grid_info: dict, longueur: float, largeur: float) -> tuple:
+        """
+        Trouve n'importe quelle position valide dans l'environnement comme fallback.
+        
+        Args:
+            grid_info: Informations sur la grille
+            longueur, largeur: Dimensions
+            
+        Returns:
+            Tuple (x, y) d'une position valide
+        """
+        # Recherche systématique dans une grille
+        step = min(longueur, largeur) / 20  # 20 points de test par dimension
+        
+        for x in np.arange(1.0, longueur - 1.0, step):
+            for y in np.arange(1.0, largeur - 1.0, step):
+                x_pixel = int(np.clip(x / grid_info['scale_x'], 0, grid_info['walls_detected'].shape[1] - 1))
+                y_pixel = int(np.clip(y / grid_info['scale_y'], 0, grid_info['walls_detected'].shape[0] - 1))
+                
+                if grid_info['walls_detected'][y_pixel, x_pixel] == 0:
+                    return x, y
+        
+        # Si vraiment rien trouvé, retourner le centre
+        return longueur / 2, largeur / 2
+
     def visualize_optimization_result(self, best_config, coverage_points, grid_info, 
                                     longueur, largeur, hauteur_totale):
         """
@@ -471,178 +615,17 @@ class AccessPointOptimizer:
         )
         
         return fig
-    
-    def generate_optimization_report(self, best_config, cluster_analysis, optimization_history):
-        """
-        Génère un rapport d'optimisation détaillé.
-        
-        Args:
-            best_config: Configuration optimale
-            cluster_analysis: Analyse des clusters
-            optimization_history: Historique d'optimisation
-            
-        Returns:
-            report: Rapport d'optimisation
-        """
-        report = {
-            'summary': {},
-            'access_points': [],
-            'coverage_analysis': {},
-            'recommendations': []
-        }
-        
-        # Résumé
-        stats = best_config['stats']
-        report['summary'] = {
-            'num_access_points': stats.get('num_access_points', 0),
-            'coverage_percent': stats.get('coverage_percent', 0),
-            'covered_points': stats.get('covered_points', 0),
-            'total_points': stats.get('total_points', 0),
-            'optimization_score': best_config['score']
-        }
-        
-        # Détails des points d'accès
-        for i, ap in enumerate(best_config['access_points']):
-            x, y, z, power = ap
-            report['access_points'].append({
-                'id': i + 1,
-                'position_x': round(x, 2),
-                'position_y': round(y, 2),
-                'position_z': round(z, 2),
-                'power_dbm': round(power, 1),
-                'floor': int(z // 2.7) + 1
-            })
-        
-        # Analyse de couverture
-        if 'signal_levels' in stats:
-            signal_levels = stats['signal_levels']
-            report['coverage_analysis'] = {
-                'excellent_coverage': len([s for s in signal_levels if s >= -50]),
-                'good_coverage': len([s for s in signal_levels if -70 <= s < -50]),
-                'poor_coverage': len([s for s in signal_levels if -85 <= s < -70]),
-                'no_coverage': len([s for s in signal_levels if s < -85]),
-                'average_signal': round(np.mean(signal_levels), 1),
-                'min_signal': round(np.min(signal_levels), 1),
-                'max_signal': round(np.max(signal_levels), 1)
-            }
-        
-        # Recommandations
-        recommendations = []
-        
-        if stats.get('coverage_percent', 0) < 90:
-            recommendations.append("Couverture insuffisante. Considérez augmenter la puissance ou ajouter des points d'accès.")
-        
-        if stats.get('num_access_points', 0) > 6:
-            recommendations.append("Nombre élevé de points d'accès. Vérifiez si une puissance plus élevée pourrait réduire ce nombre.")
-        
-        # Analyse par étage
-        access_points = best_config['access_points']
-        floors = [int(ap[2] // 2.7) for ap in access_points]
-        unique_floors = set(floors)
-        
-        if len(unique_floors) == 1 and len(access_points) > 1:
-            recommendations.append("Tous les points d'accès sont au même étage. Considérez une distribution verticale.")
-        
-        if stats.get('coverage_percent', 0) >= 95:
-            recommendations.append("Excellente couverture atteinte. Configuration optimale.")
-        
-        if len(recommendations) == 0:
-            recommendations.append("Configuration acceptable. Validez avec des mesures terrain.")
-        
-        report['recommendations'] = recommendations
-        
-        return report
-    
-    def export_optimization_csv(self, best_config, report):
-        """
-        Exporte les résultats d'optimisation en CSV.
-        
-        Args:
-            best_config: Configuration optimale
-            report: Rapport d'optimisation
-            
-        Returns:
-            csv_string: Données CSV
-        """
-        # DataFrame pour les points d'accès
-        ap_data = []
-        for ap_info in report['access_points']:
-            ap_data.append({
-                'AP_ID': ap_info['id'],
-                'Position_X_m': ap_info['position_x'],
-                'Position_Y_m': ap_info['position_y'],
-                'Position_Z_m': ap_info['position_z'],
-                'Etage': ap_info['floor'],
-                'Puissance_dBm': ap_info['power_dbm'],
-                'Couverture_Percent': report['summary']['coverage_percent'],
-                'Points_Couverts': report['summary']['covered_points'],
-                'Points_Total': report['summary']['total_points']
-            })
-        
-        df_ap = pd.DataFrame(ap_data)
-        
-        # Ajout des statistiques de couverture
-        if report['coverage_analysis']:
-            coverage_stats = pd.DataFrame([{
-                'Metric': 'Couverture_Excellente',
-                'Value': report['coverage_analysis']['excellent_coverage']
-            }, {
-                'Metric': 'Couverture_Bonne',
-                'Value': report['coverage_analysis']['good_coverage']
-            }, {
-                'Metric': 'Couverture_Faible',
-                'Value': report['coverage_analysis']['poor_coverage']
-            }, {
-                'Metric': 'Sans_Couverture',
-                'Value': report['coverage_analysis']['no_coverage']
-            }, {
-                'Metric': 'Signal_Moyen_dB',
-                'Value': report['coverage_analysis']['average_signal']
-            }])
-            
-            # Combinaison des données
-            csv_content = "=== POINTS D'ACCES OPTIMISES ===\n"
-            csv_content += df_ap.to_csv(index=False)
-            csv_content += "\n=== STATISTIQUES DE COUVERTURE ===\n"
-            csv_content += coverage_stats.to_csv(index=False)
-            
-            return csv_content
-        else:
-            return df_ap.to_csv(index=False)
-    
+
     def optimize_with_algorithm_choice_3d(self, algorithm_choice, coverage_points, grid_info, 
                                          longueur, largeur, hauteur_totale, target_coverage_db=-70.0, 
                                          min_coverage_percent=90.0, max_access_points=8, power_tx=20.0):
-        """
-        Optimise le placement des points d'accès 3D avec choix d'algorithme.
-        
-        Args:
-            algorithm_choice: 'genetic', 'kmeans', 'gmm', ou 'greedy'
-            coverage_points: Points à couvrir
-            grid_info: Informations sur la grille
-            longueur, largeur, hauteur_totale: Dimensions
-            target_coverage_db: Signal minimal requis
-            min_coverage_percent: Couverture minimale
-            max_access_points: Nombre maximal d'AP
-            power_tx: Puissance de transmission
-            
-        Returns:
-            best_config: Configuration optimale
-            algorithm_analysis: Analyse spécifique à l'algorithme
-        """
         
         print(f"🚀 Optimisation 3D avec algorithme: {algorithm_choice.upper()}")
         
-        if algorithm_choice == 'genetic':
-            return self.optimize_access_points_genetic(
-                coverage_points, grid_info, longueur, largeur, hauteur_totale,
-                target_coverage_db, min_coverage_percent, max_access_points, power_tx
-            )
-        
-        elif algorithm_choice == 'kmeans':
+        if algorithm_choice == 'kmeans':
             return self.optimize_with_clustering(
                 coverage_points, grid_info, longueur, largeur, hauteur_totale,
-                target_coverage_db, min_coverage_percent, power_tx
+                target_coverage_db, min_coverage_percent, power_tx, max_access_points
             )
         
         elif algorithm_choice == 'gmm':
@@ -665,10 +648,6 @@ class AccessPointOptimizer:
         """
         Optimisation avec algorithme GMM 3D.
         """
-        # Injection de la méthode d'évaluation dans l'optimiseur GMM
-        self.gmm_optimizer._evaluate_configuration_3d = lambda aps, cps, gi, tcdb, mcp: \
-            self.calculate_coverage_quality(aps, cps, gi, tcdb, mcp)
-        
         return self.gmm_optimizer.optimize_clustering_gmm_3d(
             coverage_points, grid_info, longueur, largeur, hauteur_totale,
             target_coverage_db, min_coverage_percent, power_tx, max_access_points
@@ -679,122 +658,7 @@ class AccessPointOptimizer:
         """
         Optimisation avec algorithme Greedy 3D.
         """
-        # Injection de la méthode d'évaluation dans l'optimiseur Greedy
-        self.greedy_optimizer._evaluate_configuration_3d = lambda aps, cps, gi, tcdb, mcp: \
-            self.calculate_coverage_quality(aps, cps, gi, tcdb, mcp)
-        
         return self.greedy_optimizer.optimize_greedy_placement_3d(
             coverage_points, grid_info, longueur, largeur, hauteur_totale,
             target_coverage_db, min_coverage_percent, power_tx, max_access_points
         )
-    
-    def compare_algorithms_3d(self, coverage_points, grid_info, longueur, largeur, hauteur_totale,
-                             target_coverage_db=-70.0, min_coverage_percent=90.0, 
-                             max_access_points=8, power_tx=20.0):
-        """
-        Compare tous les algorithmes d'optimisation 3D disponibles.
-        
-        Args:
-            coverage_points: Points à couvrir
-            grid_info: Informations sur la grille
-            longueur, largeur, hauteur_totale: Dimensions
-            target_coverage_db: Signal minimal requis
-            min_coverage_percent: Couverture minimale
-            max_access_points: Nombre maximal d'AP
-            power_tx: Puissance de transmission
-            
-        Returns:
-            comparison_results: Résultats comparatifs
-        """
-        
-        algorithms = ['genetic', 'kmeans', 'gmm', 'greedy']
-        results = {}
-        
-        print("🔬 Comparaison des algorithmes d'optimisation 3D...")
-        
-        for algorithm in algorithms:
-            try:
-                print(f"\n📊 Test algorithme: {algorithm.upper()}")
-                
-                config, analysis = self.optimize_with_algorithm_choice_3d(
-                    algorithm, coverage_points, grid_info, longueur, largeur, hauteur_totale,
-                    target_coverage_db, min_coverage_percent, max_access_points, power_tx
-                )
-                
-                if config:
-                    results[algorithm] = {
-                        'config': config,
-                        'analysis': analysis,
-                        'algorithm_name': algorithm.upper(),
-                        'success': True
-                    }
-                    
-                    stats = config['stats']
-                    print(f"✅ {algorithm.upper()}: {stats['coverage_percent']:.1f}% couverture, "
-                          f"{stats['num_access_points']} APs, score {config['score']:.3f}")
-                else:
-                    results[algorithm] = {
-                        'config': None,
-                        'analysis': {},
-                        'algorithm_name': algorithm.upper(),
-                        'success': False
-                    }
-                    print(f"❌ {algorithm.upper()}: Échec de l'optimisation")
-                    
-            except Exception as e:
-                print(f"⚠️  Erreur {algorithm.upper()}: {e}")
-                results[algorithm] = {
-                    'config': None,
-                    'analysis': {'error': str(e)},
-                    'algorithm_name': algorithm.upper(),
-                    'success': False
-                }
-        
-        # Détermination du meilleur algorithme
-        best_algorithm = None
-        best_score = -1.0
-        
-        for algo, result in results.items():
-            if result['success'] and result['config']:
-                score = result['config']['score']
-                if score > best_score:
-                    best_score = score
-                    best_algorithm = algo
-        
-        comparison_results = {
-            'algorithms': results,
-            'best_algorithm': best_algorithm,
-            'best_score': best_score,
-            'summary': self._generate_comparison_summary_3d(results)
-        }
-        
-        print(f"\n🏆 Meilleur algorithme: {best_algorithm.upper() if best_algorithm else 'Aucun'}")
-        
-        return comparison_results
-    
-    def _generate_comparison_summary_3d(self, results):
-        """
-        Génère un résumé de la comparaison des algorithmes 3D.
-        """
-        summary = {
-            'total_algorithms': len(results),
-            'successful_algorithms': sum(1 for r in results.values() if r['success']),
-            'failed_algorithms': sum(1 for r in results.values() if not r['success']),
-            'performance_ranking': []
-        }
-        
-        # Classement par performance
-        successful_results = [(algo, result) for algo, result in results.items() if result['success']]
-        successful_results.sort(key=lambda x: x[1]['config']['score'] if x[1]['config'] else 0, reverse=True)
-        
-        for i, (algo, result) in enumerate(successful_results):
-            stats = result['config']['stats']
-            summary['performance_ranking'].append({
-                'rank': i + 1,
-                'algorithm': algo.upper(),
-                'coverage_percent': stats['coverage_percent'],
-                'num_access_points': stats['num_access_points'],
-                'score': result['config']['score']
-            })
-        
-        return summary

@@ -234,7 +234,7 @@ def pathloss_3d_interface():
                     scale_x = longueur / width
                     scale_y = largeur / height
                     
-                    # Génération du modèle 3D
+                    # Génération du modèle 3D du bâtiment
                     fig_3d = visualizer_3d.create_3d_building(
                         walls_detected, 
                         longueur, 
@@ -243,13 +243,110 @@ def pathloss_3d_interface():
                         hauteur_etage
                     )
                     
-                    st.subheader("Modèle 3D du bâtiment")
+                    st.subheader("🏢 Modèle 3D du bâtiment")
                     st.plotly_chart(fig_3d, use_container_width=True)
                     
+                    # Informations sur les couleurs par étage
+                    st.subheader("🎨 Légende des couleurs par étage")
+                    color_info = visualizer_3d.get_wall_color_info(nb_etages)
+                    
+                    # Affichage de la légende en colonnes
+                    cols = st.columns(min(nb_etages, 4))
+                    for i, (etage, couleur) in enumerate(color_info.items()):
+                        with cols[i % 4]:
+                            st.markdown(f"**{etage}**: `{couleur}`")
+                    
+                    # Informations techniques
+                    st.subheader("📊 Informations du modèle 3D")
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Volume total", f"{longueur * largeur * nb_etages * hauteur_etage:.1f} m³")
+                    with col2:
+                        st.metric("Surface par étage", f"{longueur * largeur:.1f} m²")
+                    with col3:
+                        st.metric("Hauteur totale", f"{nb_etages * hauteur_etage:.1f} m")
+                    with col4:
+                        st.metric("Nombre d'étages", nb_etages)
+                    
                 except ImportError:
-                    st.error("Module de visualisation 3D non disponible. Installation en cours...")
-                    # Installation des dépendances 3D
-                    install_3d_dependencies()
+                    st.error("❌ Module de visualisation 3D non disponible. Installation en cours...")
+                except Exception as e:
+                    st.error(f"❌ Erreur lors de la génération du modèle 3D: {str(e)}")
+                    st.info("💡 Vérifiez que l'image contient des murs détectables (zones noires sur fond blanc)")
+        
+        # Visualisation interactive du plan
+        if st.button("Visualisation Interactive 3D", key="interactive_3d"):
+            with st.spinner("Génération de la visualisation interactive..."):
+                try:
+                    from visualization_3d import Visualizer3D
+                    import plotly.express as px
+                    
+                    visualizer_3d = Visualizer3D()
+                    
+                    # Création d'une visualisation interactive permettant de naviguer
+                    fig_interactive = visualizer_3d.create_3d_building(
+                        walls_detected, longueur, largeur, nb_etages, hauteur_etage
+                    )
+                    
+                    # Configuration pour l'interactivité
+                    fig_interactive.update_layout(
+                        title="🎮 Visualisation 3D Interactive - Naviguez avec la souris",
+                        scene=dict(
+                            xaxis_title="Longueur (m)",
+                            yaxis_title="Largeur (m)",
+                            zaxis_title="Hauteur (m)",
+                            aspectmode="data",
+                            camera=dict(
+                                eye=dict(x=1.5, y=1.5, z=1.2)
+                            ),
+                            dragmode="orbit"  # Permet la rotation
+                        ),
+                        updatemenus=[
+                            dict(
+                                type="buttons",
+                                direction="left",
+                                buttons=list([
+                                    dict(
+                                        args=[{"scene.camera.eye": {"x": 1.5, "y": 1.5, "z": 1.2}}],
+                                        label="Vue Perspective",
+                                        method="relayout"
+                                    ),
+                                    dict(
+                                        args=[{"scene.camera.eye": {"x": 0, "y": 0, "z": 2.5}}],
+                                        label="Vue du Dessus",
+                                        method="relayout"
+                                    ),
+                                    dict(
+                                        args=[{"scene.camera.eye": {"x": 2.5, "y": 0, "z": 0}}],
+                                        label="Vue de Face",
+                                        method="relayout"
+                                    ),
+                                    dict(
+                                        args=[{"scene.camera.eye": {"x": 0, "y": 2.5, "z": 0}}],
+                                        label="Vue de Côté",
+                                        method="relayout"
+                                    )
+                                ]),
+                                pad={"r": 10, "t": 10},
+                                showactive=True,
+                                x=0.01,
+                                xanchor="left",
+                                y=1.02,
+                                yanchor="top"
+                            ),
+                        ],
+                        width=1000,
+                        height=800
+                    )
+                    
+                    st.subheader("🎮 Modèle 3D Interactif")
+                    st.info("💡 Utilisez la souris pour faire tourner le modèle, molette pour zoomer, boutons pour changer de vue")
+                    st.plotly_chart(fig_interactive, use_container_width=True)
+                    
+                    
+                except Exception as e:
+                    st.error(f"❌ Erreur dans la visualisation interactive: {str(e)}")
         
         # Interface pour les points 3D
         st.subheader("Points d'accès et récepteur 3D")
@@ -321,6 +418,10 @@ def pathloss_3d_interface():
                         floor_difference
                     )
                     
+                    # Calcul de la puissance reçue (supposant 20dBm d'émission)
+                    power_tx = 20.0
+                    received_power = power_tx - pathloss_3d
+                    
                     # Visualisation 3D avec trajet
                     fig_3d_path = visualizer_3d.visualize_3d_path(
                         walls_detected,
@@ -332,11 +433,84 @@ def pathloss_3d_interface():
                         hauteur_etage
                     )
                     
-                    st.subheader("Visualisation 3D du trajet")
+                    st.subheader("🎯 Visualisation 3D du trajet RF")
                     st.plotly_chart(fig_3d_path, use_container_width=True)
+                    
+                    
 
-                    # Affichage des résultats
-                    st.subheader("Résultats 3D")
+                    # Affichage des résultats avec métriques améliorées
+                    st.subheader("📊 Résultats du calcul 3D")
+                    
+                    # Métriques principales
+                    col1, col2, col3, col4, col5 = st.columns(5)
+                    
+                    with col1:
+                        st.metric("Distance 3D", f"{distance_3d:.2f} m")
+                    with col2:
+                        st.metric("Murs traversés", wall_count_2d)
+                    with col3:
+                        st.metric("Diff. étages", floor_difference)
+                    with col4:
+                        st.metric("Pathloss 3D", f"{pathloss_3d:.1f} dB")
+                    with col5:
+                        st.metric("Signal reçu", f"{received_power:.1f} dBm")
+                    
+                    # Analyse de la qualité du signal
+                    st.subheader("🔍 Analyse de la qualité du signal")
+                    
+                    if received_power >= -50:
+                        signal_quality = "Excellent"
+                        signal_color = "🟢"
+                    elif received_power >= -70:
+                        signal_quality = "Bon"
+                        signal_color = "🟡"
+                    elif received_power >= -85:
+                        signal_quality = "Moyen"
+                        signal_color = "🟠"
+                    else:
+                        signal_quality = "Faible"
+                        signal_color = "🔴"
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Qualité signal", f"{signal_color} {signal_quality}")
+                    with col2:
+                        st.metric("Fréquence", f"{frequence} MHz")
+                    with col3:
+                        st.metric("Puissance TX", f"{power_tx} dBm")
+                    
+                    # Recommandations
+                    st.subheader("💡 Recommandations")
+                    
+                    recommendations = []
+                    
+                    if floor_difference > 0:
+                        recommendations.append("🏢 Communication inter-étages détectée - considérez des répéteurs")
+                    
+                    if wall_count_2d > 3:
+                        recommendations.append("🧱 Nombreux obstacles - optimisez le placement ou augmentez la puissance")
+                    
+                    if distance_3d > 15:
+                        recommendations.append("📏 Distance importante - vérifiez la portée de l'équipement")
+                    
+                    if received_power < -80:
+                        recommendations.append("📶 Signal faible - considérez des points d'accès supplémentaires")
+                    
+                    if frequence == 5000 and wall_count_2d > 2:
+                        recommendations.append("📡 5GHz + obstacles - envisagez 2.4GHz pour meilleure pénétration")
+                    
+                    if not recommendations:
+                        recommendations.append("✅ Configuration optimale détectée")
+                    
+                    for rec in recommendations:
+                        st.info(rec)
+                    
+                except ImportError:
+                    st.error("❌ Modules de calcul 3D non disponibles")
+                except Exception as e:
+                    st.error(f"❌ Erreur lors du calcul 3D: {str(e)}")
+                    st.info("💡 Vérifiez que les paramètres sont corrects")
                     
                     col1, col2, col3, col4, col5 = st.columns(5)
                     with col1:
@@ -353,7 +527,6 @@ def pathloss_3d_interface():
                 except ImportError as e:
                     st.error(f"Erreur d'importation: {e}")
                     st.info("Installation des dépendances 3D requise...")
-                    install_3d_dependencies()
 
 def heatmap_2d_interface():
     """Interface pour la génération de heatmap 2D"""
@@ -382,10 +555,10 @@ def heatmap_2d_interface():
         st.sidebar.subheader("Dimensions du bâtiment")
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            longueur = st.number_input("Longueur (m)", min_value=1.0, value=10.0, step=0.1, key="longueur_heatmap")
+            longueur = st.number_input("Longueur (m)", min_value=1.0, value=50.0, step=0.1, key="longueur_heatmap")
             
         with col2:
-            largeur = st.number_input("Largeur (m)", min_value=1.0, value=8.0, step=0.1, key="largeur_heatmap")
+            largeur = st.number_input("Largeur (m)", min_value=1.0, value=50.0, step=0.1, key="largeur_heatmap")
         
         frequence = st.sidebar.selectbox("Fréquence (MHz)", options=[2400, 5000], index=0, key="freq_heatmap")
         
@@ -393,7 +566,7 @@ def heatmap_2d_interface():
         st.sidebar.subheader("Paramètres de la heatmap")
         resolution = st.sidebar.slider("Résolution de la grille", min_value=20, max_value=100, value=100, key="resolution_heatmap")
         colormap = st.sidebar.selectbox("Palette de couleurs", 
-                                       ["plasma", "viridis", "hot", "coolwarm", "RdYlGn_r"], 
+                                       ["RdYlGn_r","plasma", "viridis", "hot", "coolwarm"], 
                                        index=0, key="colormap_heatmap")
         
         # Seuils de qualité du signal
@@ -552,11 +725,11 @@ def heatmap_3d_interface():
         st.sidebar.subheader("Dimensions du bâtiment")
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            longueur = st.number_input("Longueur (m)", min_value=1.0, value=12.5, step=0.1, key="longueur_heatmap_3d")
-            largeur = st.number_input("Largeur (m)", min_value=1.0, value=9.4, step=0.1, key="largeur_heatmap_3d")
+            longueur = st.number_input("Longueur (m)", min_value=1.0, value=50.0, step=0.1, key="longueur_heatmap_3d")
+            largeur = st.number_input("Largeur (m)", min_value=1.0, value=50.0, step=0.1, key="largeur_heatmap_3d")
         
         with col2:
-            nb_etages = st.number_input("Nombre d'étages", min_value=1, value=2, step=1, key="etages_heatmap_3d")
+            nb_etages = st.number_input("Nombre d'étages", min_value=1, value=4, step=1, key="etages_heatmap_3d")
             hauteur_etage = st.number_input("Hauteur étage (m)", min_value=2.0, value=2.7, step=0.1, key="hauteur_heatmap_3d")
         
         frequence = st.sidebar.selectbox("Fréquence (MHz)", options=[2400, 5000], index=0, key="freq_heatmap_3d")
@@ -793,20 +966,20 @@ def optimization_2d_interface():
         
         # Objectifs de couverture 2D
         st.sidebar.subheader("Objectifs de Couverture 2D")
-        target_coverage_db_2d = st.sidebar.number_input("Signal minimal (dB)", value=-50.0, step=1.0, key="target_signal_2d")
-        min_coverage_percent_2d = st.sidebar.number_input("Couverture minimale (%)", min_value=50.0, max_value=100.0, value=85.0, step=1.0, key="min_coverage_2d")
+        target_coverage_db_2d = st.sidebar.number_input("Signal minimal (dB)", value=-45.0, step=1.0, key="target_signal_2d")
+        min_coverage_percent_2d = st.sidebar.number_input("Couverture minimale (%)", min_value=50.0, max_value=100.0, value=60.0, step=1.0, key="min_coverage_2d")
         power_tx_2d = st.sidebar.number_input("Puissance émetteur (dBm)", value=20.0, step=1.0, key="power_opt_2d")
         
         # Paramètres d'optimisation 2D
         st.sidebar.subheader("Paramètres d'Optimisation")
-        max_access_points_2d = st.sidebar.number_input("Nb max de points d'accès", min_value=1, max_value=8, value=6, step=1, key="max_ap_2d")
+        max_access_points_2d = st.sidebar.number_input("Nb max de points d'accès", min_value=1, max_value=8, value=5, step=1, key="max_ap_2d")
 
         # Choix de l'algorithme
         algorithm_choice = st.sidebar.selectbox(
             "Algorithme d'optimisation",
-            ["K-means", "GMM + EM", "Greedy", "Comparaison des trois"],
+            ["K-means", "GMM + EM", "Greedy"],
             index=0,
-            help="K-means: Rapide, clusters sphériques\nGMM: Plus précis, clusters ellipsoïdaux\nGreedy: Placement séquentiel optimisé\nComparaison: Teste les trois et recommande le meilleur",
+            help="K-means: Rapide, clusters sphériques\nGMM: Plus précis, clusters ellipsoïdaux\nGreedy: Placement séquentiel optimisé",
             key="algorithm_choice_2d"
         )
         
@@ -816,8 +989,6 @@ def optimization_2d_interface():
             st.sidebar.info("🧠 Optimisation par Gaussian Mixture Model + EM")
         elif algorithm_choice == "Greedy":
             st.sidebar.info("🎯 Optimisation par placement séquentiel Greedy")
-        else:
-            st.sidebar.info("🔬 Comparaison et recommandation automatique")
         
         # Résolution pour le calcul 2D
         st.sidebar.subheader("Résolution de Calcul")
@@ -850,66 +1021,28 @@ def optimization_2d_interface():
                     
                     st.success(f"Grille générée: {len(coverage_points)} points à couvrir en 2D")
                     
-                    # Gestion des différents algorithmes
-                    if algorithm_choice == "Comparaison des trois":
-                        # Comparaison K-means vs GMM vs Greedy
-                        with st.spinner("Comparaison K-means vs GMM vs Greedy..."):
-                            comparison_results = optimizer_2d.compare_algorithms_2d(
-                                coverage_points, grid_info, longueur, largeur,
-                                target_coverage_db_2d, min_coverage_percent_2d, power_tx_2d, max_access_points_2d
-                            )
-                        
-                        # Affichage des résultats de comparaison
-                        st.subheader("🔬 Comparaison des Algorithmes")
-                        
-                        if comparison_results['recommended']:
-                            algo_names = {'kmeans': 'K-means', 'gmm': 'GMM + EM', 'greedy': 'Greedy'}
-                            recommended_name = algo_names[comparison_results['recommended']]
-                            improvement = comparison_results.get('improvement', 0)
-                            
-                            st.success(f"🏆 Algorithme recommandé: **{recommended_name}**")
-                            st.info(f"📈 Amélioration du score: +{improvement:.3f}")
-                        
-                        # Visualisation comparative
-                        fig_comparison = optimizer_2d.visualize_algorithm_comparison_2d(
-                            comparison_results, coverage_points, grid_info, longueur, largeur, image_array
-                        )
-                        st.pyplot(fig_comparison)
-                        
-                        # Utiliser le meilleur algorithme pour la suite
-                        if comparison_results['recommended'] == 'gmm':
-                            best_config_2d = comparison_results['gmm']['config']
-                            cluster_analysis_2d = comparison_results['gmm']['analysis']
-                        elif comparison_results['recommended'] == 'greedy':
-                            best_config_2d = comparison_results['greedy']['config']
-                            cluster_analysis_2d = comparison_results['greedy']['analysis']
-                        else:
-                            best_config_2d = comparison_results['kmeans']['config']
-                            cluster_analysis_2d = comparison_results['kmeans']['analysis']
-                    
+                   
+                    if algorithm_choice == "GMM + EM":
+                        algorithm_key = 'gmm'
+                        algorithm_name = "GMM + EM"
+                    elif algorithm_choice == "Greedy":
+                        algorithm_key = 'greedy'
+                        algorithm_name = "Greedy"
                     else:
-                        # Algorithme unique
-                        if algorithm_choice == "GMM + EM":
-                            algorithm_key = 'gmm'
-                            algorithm_name = "GMM + EM"
-                        elif algorithm_choice == "Greedy":
-                            algorithm_key = 'greedy'
-                            algorithm_name = "Greedy"
-                        else:
-                            algorithm_key = 'kmeans'
-                            algorithm_name = "K-means"
-                        
-                        with st.spinner(f"Optimisation par {algorithm_name}..."):
-                            best_config_2d, cluster_analysis_2d = optimizer_2d.optimize_with_algorithm_choice_2d(
-                                coverage_points, grid_info, longueur, largeur,
-                                target_coverage_db_2d, min_coverage_percent_2d, power_tx_2d, max_access_points_2d,
-                                algorithm=algorithm_key
-                            )
-                        
-                        st.success(f"Optimisation {algorithm_name} terminée: {best_config_2d['stats']['coverage_percent']:.1f}% de couverture avec {len(best_config_2d['access_points'])} points d'accès")
+                        algorithm_key = 'kmeans'
+                        algorithm_name = "K-means"
+                    
+                    with st.spinner(f"Optimisation par {algorithm_name}..."):
+                        best_config_2d, cluster_analysis_2d = optimizer_2d.optimize_with_algorithm_choice_2d(
+                            coverage_points, grid_info, longueur, largeur,
+                            target_coverage_db_2d, min_coverage_percent_2d, power_tx_2d, max_access_points_2d,
+                            algorithm=algorithm_key
+                        )
+                    
+                    st.success(f"Optimisation {algorithm_name} terminée: {best_config_2d['stats']['coverage_percent']:.1f}% de couverture avec {len(best_config_2d['access_points'])} points d'accès")
                     
                     # Affichage des résultats 2D
-                    if best_config_2d and algorithm_choice != "Comparaison des trois":
+                    if best_config_2d :
                         # Visualisation 2D
                         st.subheader("Résultat de l'Optimisation 2D")
                         fig_opt_2d = optimizer_2d.visualize_optimization_result_2d(
@@ -1015,8 +1148,8 @@ def optimization_3d_interface():
         st.sidebar.subheader("Dimensions du bâtiment")
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            longueur = st.number_input("Longueur (m)", min_value=1.0, value=12.5, step=0.1, key="longueur_opt")
-            largeur = st.number_input("Largeur (m)", min_value=1.0, value=9.4, step=0.1, key="largeur_opt")
+            longueur = st.number_input("Longueur (m)", min_value=1.0, value=50.0, step=0.1, key="longueur_opt")
+            largeur = st.number_input("Largeur (m)", min_value=1.0, value=50.0, step=0.1, key="largeur_opt")
         
         with col2:
             hauteur_totale = st.number_input("Hauteur totale (m)", min_value=2.0, value=5.4, step=0.1, key="hauteur_opt")
@@ -1026,17 +1159,17 @@ def optimization_3d_interface():
         
         # Objectifs de couverture
         st.sidebar.subheader("Objectifs de Couverture")
-        target_coverage_db = st.sidebar.number_input("Signal minimal (dB)", value=-50.0, step=1.0, key="target_signal")
-        min_coverage_percent = st.sidebar.number_input("Couverture minimale (%)", min_value=50.0, max_value=100.0, value=90.0, step=1.0, key="min_coverage")
+        target_coverage_db = st.sidebar.number_input("Signal minimal (dB)", value=-65.0, step=1.0, key="target_signal")
+        min_coverage_percent = st.sidebar.number_input("Couverture minimale (%)", min_value=50.0, max_value=100.0, value=60.0, step=1.0, key="min_coverage")
         power_tx = st.sidebar.number_input("Puissance émetteur (dBm)", value=20.0, step=1.0, key="power_opt")
         
         # Paramètres d'optimisation
         st.sidebar.subheader("Paramètres d'Optimisation")
-        max_access_points = st.sidebar.number_input("Nb max de points d'accès", min_value=1, max_value=12, value=8, step=1, key="max_ap")
+        max_access_points = st.sidebar.number_input("Nb max de points d'accès", min_value=1, max_value=12, value=5, step=1, key="max_ap")
         # Choix de l'algorithme d'optimisation
         algorithm_choice = st.sidebar.selectbox(
             "Algorithme d'optimisation",
-            ["genetic", "kmeans", "gmm", "greedy"],
+            ["kmeans", "gmm", "greedy"],
             index=1,  # K-means par défaut
             help="Choisissez l'algorithme d'optimisation pour le placement des points d'accès",
             key="algorithm_choice"
@@ -1044,20 +1177,12 @@ def optimization_3d_interface():
         
         # Informations sur les algorithmes
         algorithm_info = {
-            "genetic": "🧬 Algorithme génétique - Optimisation globale par évolution",
             "kmeans": "📊 K-means clustering - Regroupement par proximité",
             "gmm": "🧠 Gaussian Mixture Model - Modélisation probabiliste avancée",
             "greedy": "🎯 Greedy (Glouton) - Placement séquentiel optimal"
         }
         st.sidebar.info(algorithm_info[algorithm_choice])
         
-        # Option de comparaison
-        compare_algorithms = st.sidebar.checkbox(
-            "Comparer tous les algorithmes",
-            value=False,
-            help="Compare tous les algorithmes disponibles (plus lent)",
-            key="compare_algos"
-        )
 
         # Résolution pour le calcul
         st.sidebar.subheader("Résolution de Calcul")
@@ -1091,115 +1216,18 @@ def optimization_3d_interface():
                         )
                     
                     st.success(f"Zones générées: {len(coverage_points)} points à couvrir")
+                    # Mode algorithme unique
+                    algorithm_name = algorithm_choice.upper()
+                    with st.spinner(f"Optimisation avec {algorithm_name}..."):
+                        best_config, cluster_analysis = optimizer.optimize_with_algorithm_choice_3d(
+                            algorithm_choice, coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                            target_coverage_db, min_coverage_percent, max_access_points, power_tx
+                        )
                     
-                    # Choix du mode d'optimisation
-                    if compare_algorithms:
-                        # Mode comparaison de tous les algorithmes
-                        with st.spinner("Comparaison de tous les algorithmes d'optimisation..."):
-                            comparison_results = optimizer.compare_algorithms_3d(
-                                coverage_points, grid_info, longueur, largeur, hauteur_totale,
-                                target_coverage_db, min_coverage_percent, max_access_points, power_tx
-                            )
-                        
-                        # Affichage des résultats de comparaison
-                        st.success("Comparaison terminée!")
-                        
-                        # Tableau comparatif
-                        st.subheader("🏆 Comparaison des Algorithmes")
-                        
-                        comparison_data = []
-                        for algo, result in comparison_results['algorithms'].items():
-                            if result['success'] and result['config']:
-                                stats = result['config']['stats']
-                                comparison_data.append({
-                                    "Algorithme": algo.upper(),
-                                    "Couverture (%)": f"{stats['coverage_percent']:.1f}",
-                                    "Points d'Accès": stats['num_access_points'],
-                                    "Score": f"{result['config']['score']:.3f}",
-                                    "Succès": "✅"
-                                })
-                            else:
-                                comparison_data.append({
-                                    "Algorithme": algo.upper(),
-                                    "Couverture (%)": "0.0",
-                                    "Points d'Accès": 0,
-                                    "Score": "0.000",
-                                    "Succès": "❌"
-                                })
-                        
-                        df_comparison = pd.DataFrame(comparison_data)
-                        st.dataframe(df_comparison, use_container_width=True)
-                        
-                        # Graphique de comparaison
-                        successful_results = [result for result in comparison_results['algorithms'].values() 
-                                            if result['success'] and result['config']]
-                        
-                        if successful_results:
-                            fig_comparison = go.Figure()
-                            
-                            algorithms = [result['algorithm_name'] for result in successful_results]
-                            coverages = [result['config']['stats']['coverage_percent'] for result in successful_results]
-                            num_aps = [result['config']['stats']['num_access_points'] for result in successful_results]
-                            
-                            # Graphique en barres pour couverture
-                            fig_comparison.add_trace(go.Bar(
-                                name='Couverture (%)',
-                                x=algorithms,
-                                y=coverages,
-                                yaxis='y',
-                                marker_color='lightblue'
-                            ))
-                            
-                            # Graphique en barres pour nombre d'APs
-                            fig_comparison.add_trace(go.Bar(
-                                name='Nombre d\'APs',
-                                x=algorithms,
-                                y=num_aps,
-                                yaxis='y2',
-                                marker_color='lightcoral'
-                            ))
-                            
-                            fig_comparison.update_layout(
-                                title='Comparaison des Performances des Algorithmes',
-                                xaxis_title='Algorithme',
-                                yaxis=dict(
-                                    title='Couverture (%)',
-                                    side='left'
-                                ),
-                                yaxis2=dict(
-                                    title='Nombre de Points d\'Accès',
-                                    side='right',
-                                    overlaying='y'
-                                ),
-                                barmode='group'
-                            )
-                            
-                            st.plotly_chart(fig_comparison, use_container_width=True)
-                        
-                        # Sélection du meilleur algorithme pour affichage détaillé
-                        if comparison_results['best_algorithm']:
-                            best_config = comparison_results['algorithms'][comparison_results['best_algorithm']]['config']
-                            cluster_analysis = comparison_results['algorithms'][comparison_results['best_algorithm']]['analysis']
-                            
-                            st.success(f"🏆 Meilleur algorithme: {comparison_results['best_algorithm'].upper()}")
-                        else:
-                            st.error("❌ Aucun algorithme n'a réussi l'optimisation")
-                            best_config = None
-                            cluster_analysis = {}
-                    
+                    if best_config:
+                        st.success(f"Optimisation {algorithm_name} terminée: {best_config['stats']['coverage_percent']:.1f}% de couverture avec {len(best_config['access_points'])} points d'accès")
                     else:
-                        # Mode algorithme unique
-                        algorithm_name = algorithm_choice.upper()
-                        with st.spinner(f"Optimisation avec {algorithm_name}..."):
-                            best_config, cluster_analysis = optimizer.optimize_with_algorithm_choice_3d(
-                                algorithm_choice, coverage_points, grid_info, longueur, largeur, hauteur_totale,
-                                target_coverage_db, min_coverage_percent, max_access_points, power_tx
-                            )
-                        
-                        if best_config:
-                            st.success(f"Optimisation {algorithm_name} terminée: {best_config['stats']['coverage_percent']:.1f}% de couverture avec {len(best_config['access_points'])} points d'accès")
-                        else:
-                            st.error(f"❌ L'optimisation {algorithm_name} a échoué")
+                        st.error(f"❌ L'optimisation {algorithm_name} a échoué")
                     
                     # Affichage des résultats
                     if best_config:
@@ -1256,119 +1284,17 @@ def optimization_3d_interface():
                         df_ap = pd.DataFrame(ap_data)
                         st.dataframe(df_ap, use_container_width=True)
                         
-                        # Génération du rapport
-                        report = optimizer.generate_optimization_report(
-                            best_config, cluster_analysis or {}, {}
-                        )
-                        
-                        # Visualisations avancées spécifiques aux algorithmes
-                        if not compare_algorithms:
-                            if algorithm_choice == 'gmm' and 'gmm_metrics' in best_config:
-                                st.subheader("🧠 Analyse GMM Avancée")
-                                
-                                try:
-                                    # Visualisation du processus GMM
-                                    fig_gmm = optimizer.gmm_optimizer.visualize_gmm_process_3d(
-                                        best_config, cluster_analysis, coverage_points, 
-                                        longueur, largeur, hauteur_totale
-                                    )
-                                    
-                                    # Conversion matplotlib vers plotly ou affichage direct
-                                    st.pyplot(fig_gmm)
-                                    
-                                    # Métriques GMM
-                                    col1, col2, col3 = st.columns(3)
-                                    
-                                    with col1:
-                                        st.metric("AIC", f"{best_config['gmm_metrics']['aic']:.1f}")
-                                        st.metric("BIC", f"{best_config['gmm_metrics']['bic']:.1f}")
-                                    
-                                    with col2:
-                                        st.metric("Log-vraisemblance", f"{best_config['gmm_metrics']['log_likelihood']:.2f}")
-                                        st.metric("Convergé", "✅" if best_config['gmm_metrics']['converged'] else "❌")
-                                    
-                                    with col3:
-                                        st.metric("Itérations", best_config['gmm_metrics']['n_iter'])
-                                        st.metric("Composantes", best_config['n_components'])
-                                
-                                except Exception as e:
-                                    st.warning(f"Visualisation GMM indisponible: {e}")
-                            
-                            elif algorithm_choice == 'greedy' and 'placement_history' in cluster_analysis:
-                                st.subheader("🎯 Analyse Greedy Avancée")
-                                
-                                try:
-                                    # Visualisation du processus Greedy
-                                    fig_greedy = optimizer.greedy_optimizer.visualize_greedy_process_3d(
-                                        best_config, cluster_analysis, coverage_points,
-                                        longueur, largeur, hauteur_totale
-                                    )
-                                    
-                                    st.pyplot(fig_greedy)
-                                    
-                                    # Historique de placement
-                                    st.subheader("📈 Historique du Placement Séquentiel")
-                                    
-                                    history_data = []
-                                    for step in cluster_analysis['placement_history']:
-                                        history_data.append({
-                                            "Étape": step['ap_index'],
-                                            "Position": f"({step['position'][0]:.1f}, {step['position'][1]:.1f}, {step['position'][2]:.1f})",
-                                            "Couverture Avant (%)": f"{step['coverage_before']:.1f}",
-                                            "Couverture Après (%)": f"{step['coverage_after']:.1f}",
-                                            "Amélioration (%)": f"+{step['improvement']:.1f}"
-                                        })
-                                    
-                                    df_history = pd.DataFrame(history_data)
-                                    st.dataframe(df_history, use_container_width=True)
-                                    
-                                    # Métriques Greedy
-                                    col1, col2, col3 = st.columns(3)
-                                    
-                                    with col1:
-                                        total_improvement = sum(h['improvement'] for h in cluster_analysis['placement_history'])
-                                        st.metric("Amélioration Totale", f"+{total_improvement:.1f}%")
-                                    
-                                    with col2:
-                                        avg_improvement = total_improvement / len(cluster_analysis['placement_history'])
-                                        st.metric("Amélioration Moyenne", f"+{avg_improvement:.1f}%/AP")
-                                    
-                                    with col3:
-                                        st.metric("Étapes de Placement", len(cluster_analysis['placement_history']))
-                                
-                                except Exception as e:
-                                    st.warning(f"Visualisation Greedy indisponible: {e}") 
-                
                 except ImportError as e:
                     st.error(f"Module d'optimisation non disponible: {e}")
                     st.info("Vérifiez que tous les modules sont installés correctement.")
                 except Exception as e:
                     st.error(f"Erreur lors de l'optimisation: {e}")
                     st.exception(e)
-        
         except ImportError as e:
             st.error(f"Module de traitement d'image non disponible: {e}")
         except Exception as e:
             st.error(f"Erreur lors du traitement: {e}")
             st.exception(e)
-
-
-def install_3d_dependencies():
-    """Installation des dépendances pour la 3D"""
-    try:
-        import subprocess
-        import sys
-        
-        st.info("Installation de plotly pour la visualisation 3D...")
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "plotly"], 
-                              capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            st.success("Plotly installé avec succès! Rechargez la page.")
-        else:
-            st.error(f"Erreur lors de l'installation: {result.stderr}")
-    except Exception as e:
-        st.error(f"Erreur: {e}")
 
 def create_heatmap_module():
     """Crée le module de génération de heatmap s'il n'existe pas"""
