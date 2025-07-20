@@ -12,6 +12,7 @@ from visualization import Visualizer
 from ml_pathloss_predictor_2d import ml_predictor_2d
 from ml_pathloss_predictor_3d import ml_predictor_3d
 from auto_optimization_interface import auto_optimization_2d_interface
+from auto_optimization_interface_3d import auto_optimization_3d_interface
 
 def display_ml_status():
     """
@@ -44,38 +45,34 @@ def main():
 
     st.title("Analyseur de Pathloss")
     st.markdown("---")
-    
-    # Création des onglets (ajout du 7ème onglet)
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    # Création des onglets (incluant l'optimisation automatique 3D)
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "Pathloss Calculator 2D", 
         "Pathloss Calculator 3D", 
         "Génération Heatmap 2D", 
         "Génération Heatmap 3D", 
         "Optimisation Points d'Accès 2D", 
         "Optimisation Points d'Accès 3D",
-        "🎯 Optimisation Automatique 2D"
+        "🎯 Optimisation Automatique 2D",
+        "🎯 Optimisation Automatique 3D"
     ])
-    
+
     with tab1:
         pathloss_2d_interface()
-    
     with tab2:
         pathloss_3d_interface()
-    
     with tab3:
         heatmap_2d_interface()
-    
     with tab4:
         heatmap_3d_interface()
-    
     with tab5:
         optimization_2d_interface()
-    
     with tab6:
         optimization_3d_interface()
-    
     with tab7:
         auto_optimization_2d_interface()
+    with tab8:
+        auto_optimization_3d_interface()
 
 def pathloss_2d_interface():
     """Interface pour l'analyse 2D du pathloss"""
