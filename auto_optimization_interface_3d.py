@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Interface utilisateur pour l'optimisation automatique des points d'accès 3D.
 """
@@ -11,10 +10,13 @@ from auto_optimizer_3d import AutoOptimizer3D
 from image_processor import ImageProcessor
 
 def auto_optimization_3d_interface():
-    st.header("🎯 Optimisation Automatique des Points d'Accès 3D")
-    st.markdown("""
-    Cette fonctionnalité optimise automatiquement le nombre et la position des points d'accès (x, y, z)
-    pour minimiser le pathloss vers vos récepteurs définis en 3D.
+    st.header("Optimisation Auto des Points d'Accès 3D")
+    
+    # Explication de la section
+    st.info("""
+    **Optimiseur Intelligent 3D Centré sur les Récepteurs** : Définissez vos équipements dans l'espace 3D 
+    et obtenez un placement optimal des points d'accès. Algorithme de descente de gradient avec prise en compte 
+    des étages et de la propagation verticale pour une couverture volumétrique optimisée.
     """)
 
     uploaded_file_auto = st.file_uploader(
@@ -25,32 +27,36 @@ def auto_optimization_3d_interface():
     )
 
     if uploaded_file_auto is not None:
-        st.sidebar.header("🔧 Paramètres d'Optimisation 3D")
+        # Affichage des paramètres spécifiques dans la sidebar
+        st.sidebar.header("Paramètres d'Optimisation 3D")
+        
         image = Image.open(uploaded_file_auto)
         image_array = np.array(image)
+        
         col1, col2 = st.columns(2)
         with col1:
-            st.subheader("📋 Plan original")
-            st.image(image, caption="Plan téléchargé", use_column_width=True)
+            st.subheader("Plan original")
+            st.image(image, caption="Plan téléchargé", use_container_width=True)
         processor = ImageProcessor()
         processed_image, walls_detected = processor.process_image(image_array)
         with col2:
-            st.subheader("🏗️ Murs détectés")
-            st.image(processed_image, caption="Murs extraits", use_column_width=True)
-        st.sidebar.subheader("📐 Dimensions du bâtiment")
-        col1, col2, col3 = st.sidebar.columns(3)
+            st.subheader("Murs détectés")
+            st.image(processed_image, caption="Murs extraits", use_container_width=True)
+        
+        st.sidebar.subheader("Dimensions du bâtiment")
+        col1, col2 = st.sidebar.columns(2)
         with col1:
             longueur = st.number_input("Longueur (m)", min_value=1.0, value=10.0, step=0.5, key="longueur_auto_3d")
-        with col2:
             largeur = st.number_input("Largeur (m)", min_value=1.0, value=10.0, step=0.5, key="largeur_auto_3d")
-        with col3:
-            nb_etages = st.number_input("Nb étages", min_value=1, value=2, step=1, key="nb_etages_auto_3d")
-        hauteur_etage = st.sidebar.number_input("Hauteur d'un étage (m)", min_value=2.0, value=3.0, step=0.1, key="hauteur_etage_auto_3d")
+        with col2:
+            nb_etages = st.number_input("Nombre d'étages", min_value=1, value=2, step=1, key="nb_etages_auto_3d")
+            hauteur_etage = st.number_input("Hauteur étage (m)", min_value=2.0, value=3.0, step=0.1, key="hauteur_etage_auto_3d")
+        
         hauteur_totale = nb_etages * hauteur_etage
-        st.sidebar.subheader("📡 Paramètres RF")
+
         frequence = st.sidebar.selectbox("Fréquence (MHz)", options=[2400, 5000], index=0, key="freq_auto_3d")
         power_tx = st.sidebar.number_input("Puissance TX (dBm)", min_value=10.0, max_value=30.0, value=20.0, step=1.0, key="power_auto_3d")
-        st.sidebar.subheader("⚙️ Paramètres d'optimisation")
+        st.sidebar.subheader("Paramètres d'optimisation")
         max_access_points = st.sidebar.slider("Max points d'accès", min_value=1, max_value=8, value=5, key="max_aps_auto_3d")
         st.sidebar.info("🔧 Algorithme: Descente de Gradient avec placement intelligent (3D)")
         st.subheader("📍 Configuration des Récepteurs 3D")
@@ -153,7 +159,7 @@ def auto_optimization_3d_interface():
                 st.plotly_chart(fig3d, use_container_width=True)
             except Exception as e:
                 st.info(f"Visualisation 3D non disponible: {e}")
-        if st.button("🚀 Lancer l'Optimisation 3D", type="primary", key="launch_optimization_3d"):
+        if st.button("Lancer l'Optimisation 3D", type="primary", key="launch_optimization_3d"):
             if len(receivers) == 0:
                 st.error("❌ Veuillez définir au moins un récepteur!")
                 return
@@ -175,7 +181,7 @@ def auto_optimization_3d_interface():
                     best_config = result['best_config']
                     # Sauvegarder les points d'accès pour la visualisation 3D
                     st.session_state['last_ap_points'] = best_config['access_points']
-                    st.success("✅ Optimisation 3D terminée avec succès!")
+
                     st.subheader("📊 Résultats de l'optimisation 3D")
                     col1, col2, col3, col4, col5 = st.columns(5)
                     with col1:

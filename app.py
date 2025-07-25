@@ -6,6 +6,44 @@ import pandas as pd
 import plotly.graph_objects as go
 from PIL import Image
 import io
+
+# Configuration de la page (layout standard, pas wide)
+st.set_page_config(
+    page_title="Analyseur de Pathloss",
+    page_icon="📡",
+    layout="centered",  # Layout standard, pas wide
+    initial_sidebar_state="expanded"
+)
+
+# Chargement du CSS personnalisé
+def load_css():
+    try:
+        with open('styles.css', 'r', encoding='utf-8') as f:
+            css = f.read()
+        st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning("Fichier CSS non trouvé. Styles par défaut utilisés.")
+
+# Application du CSS
+load_css()
+
+def add_custom_html():
+    """Ajoute des éléments HTML personnalisés pour améliorer l'interface"""
+    st.markdown("""
+    <div class="header-container">
+        <div class="animated-background"></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def create_custom_button(text, key, button_type="primary"):
+    """Crée un bouton personnalisé avec style"""
+    if button_type == "primary":
+        class_name = "custom-button-primary"
+    else:
+        class_name = "custom-button-secondary"
+    
+    return st.button(text, key=key)
+
 from image_processor import ImageProcessor
 from pathloss_calculator import PathlossCalculator
 from visualization import Visualizer
@@ -14,47 +52,102 @@ from ml_pathloss_predictor_3d import ml_predictor_3d
 from auto_optimization_interface import auto_optimization_2d_interface
 from auto_optimization_interface_3d import auto_optimization_3d_interface
 
+def check_if_file_uploaded():
+    """
+    Vérifie si un fichier est uploadé dans n'importe quel onglet.
+    """
+    # Vérifier dans le session state de Streamlit si des fichiers sont uploadés
+    uploaded_keys = [
+        "upload_2d", "upload_3d", "upload_heatmap", "upload_heatmap_3d", 
+        "upload_optimization_2d", "upload_optimization", 
+        "upload_auto_opt", "upload_auto_opt_3d_unique"
+    ]
+    
+    for key in uploaded_keys:
+        if key in st.session_state and st.session_state[key] is not None:
+            return True
+    return False
+
+def display_about_section():
+    """
+    Affiche la section 'À propos des fonctionnalités' dans la sidebar.
+    """
+    st.sidebar.subheader("À propos des fonctionnalités")
+
+    with st.sidebar.expander("📡 Calculateurs de Pathloss"):
+        st.write("""
+        **2D** : Analyse point-à-point sur un plan
+                 
+        **3D** : Extension multi-étages avec propagation verticale
+        """)
+    
+    with st.sidebar.expander("🌈 Générateurs de Heatmap"):
+        st.write("""
+        **2D** : Cartes thermiques de couverture radio
+                 
+        **3D** : Visualisation volumétrique par voxels
+        """)
+    
+    with st.sidebar.expander("🗺️ Optimiseurs de Points d'Accès"):
+        st.write("""
+        **Classique** : Algorithmes K-means, GMM, Greedy
+                 
+        **Automatique** : Centré sur vos récepteurs spécifiques
+        """)
+    
+    with st.sidebar.expander("🧠 Intelligence Artificielle"):
+        st.write("""
+        **Modèles ML** : XGBoost et régression linéaire
+                 
+        **Fallback** : Modèles théoriques de propagation
+        """)
+    
+    st.sidebar.markdown("---")
+
 def display_ml_status():
     """
     Affiche le statut des modèles ML dans la sidebar.
     """
-    st.sidebar.subheader("🤖 Modèles ML")
+    st.sidebar.subheader("Modèles ML")
     
     # Statut du modèle 2D
     model_2d_info = ml_predictor_2d.get_model_info()
     if model_2d_info['status'] == 'chargé':
-        st.sidebar.success("✅ Modèle 2D: Chargé")
-        st.sidebar.caption(f"Type: {model_2d_info['model_type']}")
+        st.sidebar.success("Modèle 2D: Chargé")
     else:
-        st.sidebar.warning("⚠️ Modèle 2D: Fallback théorique")
+        st.sidebar.warning("Modèle 2D: Fallback théorique")
     
     # Statut du modèle 3D
     model_3d_info = ml_predictor_3d.get_model_info()
     if model_3d_info['status'] == 'chargé':
-        st.sidebar.success("✅ Modèle 3D: Chargé")
+        st.sidebar.success("Modèle 3D: Chargé")
         st.sidebar.caption(f"Type: {model_3d_info['model_type']}")
         if 'metrics' in model_3d_info:
             st.sidebar.caption(f"R²: {model_3d_info['metrics'].get('r2_score', 'N/A'):.3f}")
     else:
-        st.sidebar.warning("⚠️ Modèle 3D: Fallback théorique")
-    st.sidebar.markdown("---")
+        st.sidebar.warning("Modèle 3D: Fallback théorique")
 
 def main():
-    # Affichage du statut ML
-    display_ml_status()
+    # Afficher les sections générales seulement si aucun fichier n'est uploadé
+    if not check_if_file_uploaded():
+        # Affichage de la section à propos
+        display_about_section()
+        
+        # Affichage du statut ML
+        display_ml_status()
 
     st.title("Analyseur de Pathloss")
     st.markdown("---")
     # Création des onglets (incluant l'optimisation automatique 3D)
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-        "Pathloss Calculator 2D", 
-        "Pathloss Calculator 3D", 
+        "Calcul Pathloss 2D", 
+        "Calcul Pathloss 3D", 
         "Génération Heatmap 2D", 
         "Génération Heatmap 3D", 
-        "Optimisation Points d'Accès 2D", 
-        "Optimisation Points d'Accès 3D",
-        "🎯 Optimisation Automatique 2D",
-        "🎯 Optimisation Automatique 3D"
+        "Optimisation Wifi 2D", 
+        "Optimisation Wifi 3D",
+        "Optimisation Automatique 2D",
+        "Optimisation Automatique 3D"
     ])
 
     with tab1:
@@ -78,6 +171,13 @@ def pathloss_2d_interface():
     """Interface pour l'analyse 2D du pathloss"""
     st.header("Analyse 2D du Pathloss")
 
+    # Explication de la section
+    st.info("""
+    **Calculateur de Perte de Signal 2D** : Analysez la propagation radio entre deux points sur un plan. 
+    Chargez votre plan d'étage, placez émetteur et récepteur, et obtenez instantanément le calcul précis 
+    des pertes avec visualisation du trajet et détection automatique des obstacles.
+    """)
+
     # Upload du fichier
     uploaded_file = st.file_uploader(
         "Téléchargez le plan de l'appartement (PNG)",
@@ -87,15 +187,27 @@ def pathloss_2d_interface():
     )
     
     if uploaded_file is not None:
-        # Sidebar pour les paramètres
+        # Affichage des paramètres spécifiques dans la sidebar
         st.sidebar.header("Paramètres du bâtiment (2D)")
+        
         # Conversion de l'image uploadée
         image = Image.open(uploaded_file)
         image_array = np.array(image)
         
         # Affichage de l'image originale
-        st.subheader("Plan original")
-        st.image(image, caption="Plan téléchargé", use_column_width=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Plan original")
+            st.image(image, caption="Plan téléchargé", use_container_width=True)
+        
+        # Traitement de l'image pour extraire les murs
+        processor = ImageProcessor()
+        processed_image, walls_detected = processor.process_image(image_array)
+        
+        with col2:
+            st.subheader("Murs détectés")
+            st.image(processed_image, caption="Murs extraits", use_container_width=True)
+        
         
         # Paramètres du bâtiment
         col1, col2 = st.sidebar.columns(2)
@@ -106,15 +218,8 @@ def pathloss_2d_interface():
             largeur = st.number_input("Largeur (m)", min_value=1.0, value=8.0, step=0.1)
         
         frequence = st.sidebar.selectbox("Fréquence (MHz)", [2400, 5000], index=0)
-        
-        # Traitement de l'image
-        processor = ImageProcessor()
-        processed_image, walls_detected = processor.process_image(image_array)
-        
-        # Affichage de l'image traitée
-        st.subheader("Murs détectés")
-        st.image(processed_image, caption="Murs extraits", use_column_width=True)
-        
+
+
         # Conversion des coordonnées pixel vers mètres
         height, width = image_array.shape[:2]
         scale_x = longueur / width
@@ -141,7 +246,7 @@ def pathloss_2d_interface():
             y2_meter = y2_pixel * scale_y
             st.write(f"Position: ({x2_meter:.2f}m, {y2_meter:.2f}m)")
         
-        if st.button("Calculer le Pathloss"):
+        if st.button("Calculer le Pathloss", key="calc_2d_main"):
             # Calcul du pathloss
             calculator = PathlossCalculator(frequence)
             
@@ -168,7 +273,7 @@ def pathloss_2d_interface():
             )
 
             st.subheader("Visualisation du trajet")
-            st.image(result_image, caption="Trajet et points", use_column_width=True)
+            st.image(result_image, caption="Trajet et points", use_container_width=True)
             
             # Affichage des résultats
             st.subheader("Résultats")
@@ -187,6 +292,13 @@ def pathloss_2d_interface():
 def pathloss_3d_interface():
     """Interface pour l'analyse 3D du pathloss"""
     st.header("Analyse 3D du Pathloss")
+
+    # Explication de la section
+    st.info("""
+    **Calculateur de Perte de Signal 3D** : Extension du calcul 2D pour bâtiments multi-étages. 
+    Votre plan devient un modèle 3D avec reproduction automatique sur chaque niveau. 
+    Positionnez vos équipements dans l'espace et visualisez la propagation radio en volume.
+    """)
     
     # Upload du fichier pour 3D
     uploaded_file_3d = st.file_uploader(
@@ -197,15 +309,26 @@ def pathloss_3d_interface():
     )
     
     if uploaded_file_3d is not None:
-        # Sidebar pour les paramètres 3D
+        # Affichage des paramètres spécifiques dans la sidebar
         st.sidebar.header("Paramètres du bâtiment (3D)")
+        
         # Conversion de l'image uploadée
         image = Image.open(uploaded_file_3d)
         image_array = np.array(image)
-        
+
         # Affichage de l'image originale
-        st.subheader("Plan 2D original")
-        st.image(image, caption="Plan téléchargé pour conversion 3D", use_column_width=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Plan 2D original")
+            st.image(image, caption="Plan téléchargé pour conversion 3D", use_container_width=True)
+        
+        # Traitement de l'image pour extraire les murs
+        processor = ImageProcessor()
+        processed_image, walls_detected = processor.process_image(image_array)
+        
+        with col2:
+            st.subheader("Murs détectés")
+            st.image(processed_image, caption="Murs extraits pour duplication 3D", use_container_width=True)
         
         # Paramètres du bâtiment 3D
         st.sidebar.subheader("Dimensions du bâtiment")
@@ -219,14 +342,6 @@ def pathloss_3d_interface():
             hauteur_etage = st.number_input("Hauteur étage (m)", min_value=2.0, value=2.7, step=0.1, key="hauteur_3d")
         
         frequence = st.sidebar.selectbox("Fréquence (MHz)", options=[2400, 5000], index=0, key="freq_3d")
-        
-        # Traitement de l'image pour extraire les murs
-        processor = ImageProcessor()
-        processed_image, walls_detected = processor.process_image(image_array)
-        
-        # Affichage de l'image traitée
-        st.subheader("Murs détectés (plan de base)")
-        st.image(processed_image, caption="Murs extraits pour duplication 3D", use_column_width=True)
         
         
         # Visualisation interactive du plan
@@ -245,7 +360,7 @@ def pathloss_3d_interface():
                     
                     # Configuration pour l'interactivité
                     fig_interactive.update_layout(
-                        title="🎮 Visualisation 3D Interactive - Naviguez avec la souris",
+                        title="Visualisation 3D Interactive - Naviguez avec la souris",
                         scene=dict(
                             xaxis_title="Longueur (m)",
                             yaxis_title="Largeur (m)",
@@ -293,9 +408,6 @@ def pathloss_3d_interface():
                         width=1000,
                         height=800
                     )
-                    
-                    st.subheader("🎮 Modèle 3D Interactif")
-                    st.info("💡 Utilisez la souris pour faire tourner le modèle, molette pour zoomer, boutons pour changer de vue")
                     st.plotly_chart(fig_interactive, use_container_width=True)
                     
                     
@@ -386,14 +498,13 @@ def pathloss_3d_interface():
                         nb_etages,
                         hauteur_etage
                     )
-                    
-                    st.subheader("🎯 Visualisation 3D du trajet RF")
+                    st.subheader("Visualisation 3D du trajet")
                     st.plotly_chart(fig_3d_path, use_container_width=True)
                     
                     
 
                     # Affichage des résultats avec métriques améliorées
-                    st.subheader("📊 Résultats du calcul 3D")
+                    st.subheader("Résultats du calcul 3D")
                     
                     # Métriques principales
                     col1, col2, col3, col4, col5 = st.columns(5)
@@ -409,8 +520,10 @@ def pathloss_3d_interface():
                     with col5:
                         st.metric("Signal reçu", f"{received_power:.1f} dBm")
                     
+                    st.markdown("---")
+
                     # Analyse de la qualité du signal
-                    st.subheader("🔍 Analyse de la qualité du signal")
+                    st.subheader("Analyse de la qualité du signal")
                     
                     if received_power >= -50:
                         signal_quality = "Excellent"
@@ -433,32 +546,6 @@ def pathloss_3d_interface():
                         st.metric("Fréquence", f"{frequence} MHz")
                     with col3:
                         st.metric("Puissance TX", f"{power_tx} dBm")
-                    
-                    # Recommandations
-                    st.subheader("💡 Recommandations")
-                    
-                    recommendations = []
-                    
-                    if floor_difference > 0:
-                        recommendations.append("🏢 Communication inter-étages détectée - considérez des répéteurs")
-                    
-                    if wall_count_2d > 3:
-                        recommendations.append("🧱 Nombreux obstacles - optimisez le placement ou augmentez la puissance")
-                    
-                    if distance_3d > 15:
-                        recommendations.append("📏 Distance importante - vérifiez la portée de l'équipement")
-                    
-                    if received_power < -80:
-                        recommendations.append("📶 Signal faible - considérez des points d'accès supplémentaires")
-                    
-                    if frequence == 5000 and wall_count_2d > 2:
-                        recommendations.append("📡 5GHz + obstacles - envisagez 2.4GHz pour meilleure pénétration")
-                    
-                    if not recommendations:
-                        recommendations.append("✅ Configuration optimale détectée")
-                    
-                    for rec in recommendations:
-                        st.info(rec)
                     
                 except ImportError:
                     st.error("❌ Modules de calcul 3D non disponibles")
@@ -485,6 +572,13 @@ def pathloss_3d_interface():
 def heatmap_2d_interface():
     """Interface pour la génération de heatmap 2D"""
     st.header("Génération Heatmap 2D")
+
+    # Explication de la section
+    st.info("""
+    **Carte de Couverture Radio 2D** : Générez une carte thermique complète de votre réseau WiFi. 
+    Placez vos points d'accès sur le plan et visualisez instantanément les zones de couverture 
+    avec statistiques détaillées et classification automatique de la qualité du signal.
+    """)
     
     # Upload du fichier pour heatmap
     uploaded_file_heatmap = st.file_uploader(
@@ -495,15 +589,26 @@ def heatmap_2d_interface():
     )
     
     if uploaded_file_heatmap is not None:
-        # Sidebar pour les paramètres heatmap
+        # Affichage des paramètres spécifiques dans la sidebar
         st.sidebar.header("Paramètres Heatmap 2D")
+        
         # Conversion de l'image uploadée
         image = Image.open(uploaded_file_heatmap)
         image_array = np.array(image)
-        
+
         # Affichage de l'image originale
-        st.subheader("Plan original")
-        st.image(image, caption="Plan pour génération de heatmap", use_column_width=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Plan original")
+            st.image(image, caption="Plan pour génération de heatmap", use_container_width=True)
+        
+        # Traitement de l'image pour extraire les murs
+        processor = ImageProcessor()
+        processed_image, walls_detected = processor.process_image(image_array)
+        
+        with col2:
+            st.subheader("Murs détectés")
+            st.image(processed_image, caption="Murs extraits pour calcul heatmap", use_container_width=True)  
         
         # Paramètres du bâtiment pour heatmap
         st.sidebar.subheader("Dimensions du bâtiment")
@@ -528,14 +633,7 @@ def heatmap_2d_interface():
         seuil_excellent = st.sidebar.number_input("Excellent (dB max)", value=-50.0, step=1.0, key="seuil_excellent")
         seuil_bon = st.sidebar.number_input("Bon (dB max)", value=-70.0, step=1.0, key="seuil_bon")
         seuil_faible = st.sidebar.number_input("Faible (dB max)", value=-90.0, step=1.0, key="seuil_faible")
-        
-        # Traitement de l'image pour extraire les murs
-        processor = ImageProcessor()
-        processed_image, walls_detected = processor.process_image(image_array)
-        
-        # Affichage de l'image traitée
-        st.subheader("Murs détectés")
-        st.image(processed_image, caption="Murs extraits pour calcul heatmap", use_column_width=True)
+
         
         # Interface pour les points d'accès (émetteurs)
         st.subheader("Configuration des points d'accès")
@@ -578,7 +676,7 @@ def heatmap_2d_interface():
             })
         
         # Bouton pour générer la heatmap
-        if st.button("Générer la Heatmap 2D", key="generate_heatmap"):
+        if st.button("Générer la Heatmap 2D", key="generate_heatmap_2d_main"):
             with st.spinner("Génération de la heatmap 2D..."):
                 try:
                     # Importation du module heatmap
@@ -647,7 +745,6 @@ def heatmap_2d_interface():
                 except ImportError as e:
                     st.error(f"Module heatmap non disponible: {e}")
                     st.info("Création du module de génération de heatmap...")
-                    create_heatmap_module()
                 except Exception as e:
                     st.error(f"Erreur lors de la génération: {e}")
                     st.exception(e)
@@ -655,6 +752,13 @@ def heatmap_2d_interface():
 def heatmap_3d_interface():
     """Interface pour la génération de heatmap 3D avec voxels"""
     st.header("Génération Heatmap 3D")
+
+    # Explication de la section
+    st.info("""
+    **Visualisation 3D de Couverture Radio** : Explorez votre couverture WiFi en trois dimensions avec des voxels colorés. 
+    Analysez la propagation radio étage par étage, identifiez les zones mortes et optimisez 
+    la couverture volumétrique de vos bâtiments multi-niveaux.
+    """)
     
     # Upload du fichier pour heatmap 3D
     uploaded_file_heatmap_3d = st.file_uploader(
@@ -665,16 +769,27 @@ def heatmap_3d_interface():
     )
     
     if uploaded_file_heatmap_3d is not None:
-        # Sidebar pour les paramètres heatmap 3D
+        # Affichage des paramètres spécifiques dans la sidebar
         st.sidebar.header("Paramètres Heatmap 3D")
+        
         # Conversion de l'image uploadée
         image = Image.open(uploaded_file_heatmap_3d)
         image_array = np.array(image)
-        
+
         # Affichage de l'image originale
-        st.subheader("Plan 2D de base")
-        st.image(image, caption="Plan pour génération de heatmap 3D", use_column_width=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Plan 2D de base")
+            st.image(image, caption="Plan pour génération de heatmap 3D", use_container_width=True)
         
+        # Traitement de l'image pour extraire les murs
+        processor = ImageProcessor()
+        processed_image, walls_detected = processor.process_image(image_array)
+        
+        with col2:
+            st.subheader("Murs détectés")
+            st.image(processed_image, caption="Murs extraits pour duplication en 3D", use_container_width=True)
+
         # Paramètres du bâtiment pour heatmap 3D
         st.sidebar.subheader("Dimensions du bâtiment")
         col1, col2 = st.sidebar.columns(2)
@@ -707,14 +822,7 @@ def heatmap_3d_interface():
         seuil_excellent_3d = st.sidebar.number_input("Excellent (dB max)", value=-40.0, step=1.0, key="seuil_excellent_3d")
         seuil_bon_3d = st.sidebar.number_input("Bon (dB max)", value=-65.0, step=1.0, key="seuil_bon_3d")
         seuil_faible_3d = st.sidebar.number_input("Faible (dB max)", value=-85.0, step=1.0, key="seuil_faible_3d")
-        
-        # Traitement de l'image pour extraire les murs
-        processor = ImageProcessor()
-        processed_image, walls_detected = processor.process_image(image_array)
-        
-        # Affichage de l'image traitée
-        st.subheader("Murs détectés (plan de base)")
-        st.image(processed_image, caption="Murs extraits pour duplication en 3D", use_column_width=True)
+
         
         # Interface pour les points d'accès 3D (émetteurs)
         st.subheader("Configuration des points d'accès 3D")
@@ -767,7 +875,7 @@ def heatmap_3d_interface():
             })
         
         # Bouton pour générer la heatmap 3D
-        if st.button("Générer la Heatmap 3D", key="generate_heatmap_3d"):
+        if st.button("Générer la Heatmap 3D", key="generate_heatmap_3d_main"):
             with st.spinner("Génération de la heatmap 3D avec voxels... Cela peut prendre quelques minutes."):
                 try:
                     # Importation du module heatmap 3D
@@ -878,7 +986,6 @@ def heatmap_3d_interface():
                 except ImportError as e:
                     st.error(f"Module heatmap 3D non disponible: {e}")
                     st.info("Création du module de génération de heatmap 3D...")
-                    create_heatmap_3d_module()
                 except Exception as e:
                     st.error(f"Erreur lors de la génération 3D: {e}")
                     st.exception(e)
@@ -886,6 +993,13 @@ def heatmap_3d_interface():
 def optimization_2d_interface():
     """Interface pour l'optimisation automatique des points d'accès 2D"""
     st.header("Optimisation des Points d'Accès 2D")
+
+    # Explication de la section
+    st.info("""
+    **Optimiseur Intelligent de Réseau WiFi 2D** : Laissez l'IA placer automatiquement vos points d'accès. 
+    Définissez vos objectifs de couverture, choisissez votre algorithme d'optimisation et obtenez 
+    la configuration réseau optimale avec visualisation complète et métriques de performance.
+    """)
     
     # Upload du fichier pour optimisation 2D
     uploaded_file_optimization_2d = st.file_uploader(
@@ -896,15 +1010,27 @@ def optimization_2d_interface():
     )
     
     if uploaded_file_optimization_2d is not None:
-        # Sidebar pour les paramètres d'optimisation 2D
+        # Affichage des paramètres spécifiques dans la sidebar
         st.sidebar.header("Paramètres d'Optimisation 2D")
+        
         # Conversion de l'image uploadée
         image = Image.open(uploaded_file_optimization_2d)
         image_array = np.array(image)
-        
+
         # Affichage de l'image originale
-        st.subheader("Plan 2D pour optimisation")
-        st.image(image, caption="Plan pour optimisation des points d'accès 2D", use_column_width=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Plan original")
+            st.image(image, caption="Plan pour optimisation des points d'accès 2D", use_container_width=True)
+        
+        # Traitement de l'image pour extraire les murs
+        processor = ImageProcessor()
+        processed_image, walls_detected = processor.process_image(image_array)
+        
+        with col2:
+            st.subheader("Murs détectés")
+            st.image(processed_image, caption="Murs extraits pour l'optimisation 2D", use_container_width=True)
+
         
         # Paramètres du bâtiment 2D
         st.sidebar.subheader("Dimensions du plan")
@@ -950,16 +1076,8 @@ def optimization_2d_interface():
         
         # Traitement de l'image
         try:
-            from image_processor import ImageProcessor
-            processor = ImageProcessor()
-            processed_image, walls_detected = processor.process_image(image_array)
-            
-            # Affichage de l'image traitée
-            st.subheader("Murs détectés")
-            st.image(processed_image, caption="Murs extraits pour l'optimisation 2D", use_column_width=True)
-            
             # Bouton d'optimisation 2D
-            if st.button("🚀 Lancer l'Optimisation 2D", key="optimize_button_2d"):
+            if st.button("Lancer l'Optimisation 2D", key="optimize_button_2d_main"):
                 
                 try:
                     from access_point_optimizer_2d_fixed import AccessPointOptimizer2D
@@ -1078,6 +1196,13 @@ def optimization_2d_interface():
 def optimization_3d_interface():
     """Interface pour l'optimisation automatique des points d'accès 3D"""
     st.header("Optimisation des Points d'Accès 3D")
+
+    # Explication de la section
+    st.info("""
+    **Optimiseur Avancé de Réseau WiFi 3D** : Optimisation intelligente pour bâtiments complexes. 
+    Algorithmes génétiques et machine learning pour placer automatiquement vos équipements 
+    dans l'espace 3D et maximiser la couverture volumétrique avec un minimum de points d'accès.
+    """)
     
     # Upload du fichier pour optimisation
     uploaded_file_optimization = st.file_uploader(
@@ -1088,15 +1213,27 @@ def optimization_3d_interface():
     )
     
     if uploaded_file_optimization is not None:
-        # Sidebar pour les paramètres d'optimisation
+        # Affichage des paramètres spécifiques dans la sidebar
         st.sidebar.header("Paramètres d'Optimisation 3D")
+        
         # Conversion de l'image uploadée
         image = Image.open(uploaded_file_optimization)
         image_array = np.array(image)
-        
+
         # Affichage de l'image originale
-        st.subheader("Plan de base pour optimisation")
-        st.image(image, caption="Plan pour optimisation des points d'accès", use_column_width=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Plan 2D original")
+            st.image(image, caption="Plan pour optimisation des points d'accès", use_container_width=True)
+        
+        # Traitement de l'image pour extraire les murs
+        processor = ImageProcessor()
+        processed_image, walls_detected = processor.process_image(image_array)
+        
+        with col2:
+            st.subheader("Murs détectés")
+            st.image(processed_image, caption="Murs extraits pour l'optimisation 3D", use_container_width=True)
+
         
         # Paramètres du bâtiment
         st.sidebar.subheader("Dimensions du bâtiment")
@@ -1145,16 +1282,8 @@ def optimization_3d_interface():
         
         # Traitement de l'image
         try:
-            from image_processor import ImageProcessor
-            processor = ImageProcessor()
-            processed_image, walls_detected = processor.process_image(image_array)
-            
-            # Affichage de l'image traitée
-            st.subheader("Murs détectés")
-            st.image(processed_image, caption="Murs extraits pour l'optimisation", use_column_width=True)
-            
             # Bouton d'optimisation
-            if st.button("🚀 Lancer l'Optimisation", key="optimize_button"):
+            if st.button("Lancer l'Optimisation 3D", key="optimize_button"):
                 
                 try:
                     from access_point_optimizer import AccessPointOptimizer
@@ -1249,16 +1378,6 @@ def optimization_3d_interface():
         except Exception as e:
             st.error(f"Erreur lors du traitement: {e}")
             st.exception(e)
-
-def create_heatmap_module():
-    """Crée le module de génération de heatmap s'il n'existe pas"""
-    st.info("Le module de génération de heatmap sera créé automatiquement...")
-    # Cette fonction peut être appelée pour créer le module si nécessaire
-
-def create_heatmap_3d_module():
-    """Crée le module de génération de heatmap 3D s'il n'existe pas"""
-    st.info("Le module de génération de heatmap 3D sera créé automatiquement...")
-    # Cette fonction peut être appelée pour créer le module si nécessaire
 
 if __name__ == "__main__":
     main()

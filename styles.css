@@ -1,0 +1,580 @@
+/* Palette de couleurs */
+:root {
+    --primary-dark: #0B1426;     /* Bleu très foncé - textes principaux */
+    --secondary-dark: #1E3A5F;   /* Bleu foncé - navigation */
+    --primary-blue: #2E5984;     /* Bleu primaire - boutons principaux */
+    --accent-blue: #4A90B8;      /* Bleu moyen - interactions, hover */
+    --light-blue: #7FB3D3;       /* Bleu clair - accents */
+    --pale-blue: #B8D4E3;        /* Bleu pâle - backgrounds subtils */
+}
+
+/* Configuration générale de la page */
+.stApp {
+    background: #ffffff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Conteneur principal */
+.main .block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Titre principal avec animation */
+h1 {
+    color: var(--primary-dark) !important;
+    text-align: center;
+    font-weight: 700;
+    animation: fadeInDown 0.8s ease-out;
+    text-shadow: 0 2px 4px rgba(11, 20, 38, 0.1);
+}
+
+/* Animation des titres de sections */
+h2, h3 {
+    color: var(--secondary-dark) !important;
+    animation: fadeInLeft 0.6s ease-out;
+    margin: 1.5rem 0;
+}
+
+/* Sidebar avec animations */
+.css-1d391kg {
+    background: #ffffff;
+    border-right: 2px solid var(--light-blue);
+    animation: slideInLeft 0.5s ease-out;
+}
+
+/* En-têtes de sidebar */
+.sidebar .sidebar-content h1,
+.sidebar .sidebar-content h2,
+.sidebar .sidebar-content h3 {
+    color: var(--primary-dark) !important;
+    border-bottom: 2px solid var(--accent-blue);
+    padding-bottom: 0.5rem;
+    animation: fadeIn 0.7s ease-out;
+}
+
+/* Boutons avec effets hover */
+.stButton > button {
+    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--accent-blue) 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 0.75rem 1.5rem !important;
+    font-weight: 600 !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 4px 12px rgba(46, 89, 132, 0.3) !important;
+    transform: translateY(0) !important;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(135deg, var(--accent-blue) 0%, var(--light-blue) 100%) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 20px rgba(46, 89, 132, 0.4) !important;
+    animation: pulse 0.6s ease-in-out;
+}
+
+.stButton > button:active {
+    transform: translateY(0) !important;
+    box-shadow: 0 2px 8px rgba(46, 89, 132, 0.5) !important;
+}
+
+/* Onglets avec animations */
+.stTabs [data-baseweb="tab-list"] {
+    background: rgba(184, 212, 227, 0.1) !important;
+    border-radius: 12px !important;
+    padding: 0.5rem !important;
+    animation: fadeIn 0.8s ease-out;
+    border: 1px solid var(--pale-blue) !important;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    color: var(--secondary-dark) !important;
+    border-radius: 6px !important;
+    margin: 0 0.25rem !important;
+    transition: all 0.3s ease !important;
+    font-weight: 500 !important;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    background: var(--light-blue) !important;
+    color: var(--primary-dark) !important;
+    transform: translateY(-1px);
+}
+
+.stTabs [aria-selected="true"] {
+    background: var(--primary-blue) !important;
+    color: white !important;
+    box-shadow: 0 4px 8px rgba(46, 89, 132, 0.3) !important;
+}
+
+/* Upload de fichiers avec animation */
+.stFileUploader {
+    border: 2px dashed var(--accent-blue) !important;
+    border-radius: 12px !important;
+    padding: 2rem !important;
+    background: #ffffff !important;
+    transition: all 0.3s ease !important;
+    animation: fadeInUp 0.6s ease-out;
+}
+
+.stFileUploader:hover {
+    border-color: var(--primary-blue) !important;
+    background: rgba(184, 212, 227, 0.05) !important;
+    transform: scale(1.01);
+}
+
+/* Métriques avec animations et hover avancés */
+[data-testid="metric-container"] {
+    background: #ffffff !important;
+    border: 2px solid var(--pale-blue) !important;
+    border-radius: 12px !important;
+    padding: 1.2rem !important;
+    box-shadow: 0 4px 12px rgba(127, 179, 211, 0.15) !important;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    animation: fadeInUp 0.7s ease-out;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+/* Effet de brillance au survol */
+[data-testid="metric-container"]::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(74, 144, 184, 0.1), transparent);
+    transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    transition: transform 0.6s ease;
+    pointer-events: none;
+}
+
+[data-testid="metric-container"]:hover::before {
+    transform: translateX(100%) translateY(100%) rotate(45deg);
+}
+
+[data-testid="metric-container"]:hover {
+    transform: translateY(-6px) scale(1.03);
+    box-shadow: 0 12px 28px rgba(127, 179, 211, 0.25) !important;
+    border-color: var(--accent-blue) !important;
+    background: linear-gradient(135deg, #ffffff 0%, rgba(184, 212, 227, 0.05) 100%) !important;
+}
+
+/* Animation des valeurs des métriques */
+[data-testid="metric-container"]:hover [data-testid="metric-value"] {
+    transform: scale(1.08);
+    transition: transform 0.3s ease;
+}
+
+/* Animation des labels des métriques */
+[data-testid="metric-container"] [data-testid="metric-label"] {
+    transition: color 0.3s ease;
+}
+
+[data-testid="metric-container"]:hover [data-testid="metric-label"] {
+    color: var(--primary-blue) !important;
+}
+
+/* Inputs avec focus animé */
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input,
+.stSelectbox > div > div > div {
+    border: 2px solid var(--light-blue) !important;
+    border-radius: 8px !important;
+    transition: all 0.3s ease !important;
+    background: #ffffff !important;
+}
+
+.stTextInput > div > div > input:focus,
+.stNumberInput > div > div > input:focus,
+.stSelectbox > div > div > div:focus-within {
+    border-color: var(--primary-blue) !important;
+    box-shadow: 0 0 0 3px rgba(46, 89, 132, 0.2) !important;
+    transform: scale(1.01);
+}
+
+/* Sliders avec style personnalisé 
+.stSlider > div > div > div {
+    background: var(--light-blue) !important;
+}
+
+.stSlider > div > div > div > div {
+    background: var(--primary-blue) !important;
+}*/
+
+/* Expanders avec animations */
+.streamlit-expanderHeader {
+    background: #ffffff !important;
+    border: 1px solid var(--pale-blue) !important;
+    border-radius: 8px !important;
+    transition: all 0.3s ease !important;
+}
+
+.streamlit-expanderHeader:hover {
+    background: rgba(184, 212, 227, 0.08) !important;
+    transform: translateX(4px);
+    border-color: var(--light-blue) !important;
+}
+
+/* Info boxes avec animations */
+.stInfo {
+    background: #ffffff !important;
+    border: 1px solid var(--pale-blue) !important;
+    border-left: 4px solid var(--accent-blue) !important;
+    border-radius: 8px !important;
+    animation: slideInRight 0.5s ease-out;
+    box-shadow: 0 2px 8px rgba(74, 144, 184, 0.1) !important;
+}
+
+.stSuccess {
+    background: #ffffff !important;
+    border: 1px solid #d4edda !important;
+    border-left: 4px solid #28a745 !important;
+    border-radius: 8px !important;
+    animation: bounceIn 0.6s ease-out;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.1) !important;
+}
+
+.stWarning {
+    background: #ffffff !important;
+    border: 1px solid #ffeaa7 !important;
+    border-left: 4px solid #ffc107 !important;
+    border-radius: 8px !important;
+    animation: shake 0.5s ease-in-out;
+    box-shadow: 0 2px 8px rgba(255, 193, 7, 0.1) !important;
+}
+
+.stError {
+    background: #ffffff !important;
+    border: 1px solid #f8d7da !important;
+    border-left: 4px solid #dc3545 !important;
+    border-radius: 8px !important;
+    animation: fadeIn 0.5s ease-out;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.1) !important;
+}
+
+/* Colonnes avec espacement */
+.element-container .stColumn {
+    animation: fadeInUp 0.6s ease-out;
+}
+
+/* Images avec effet hover */
+.stImage {
+    border-radius: 12px !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 4px 12px rgba(127, 179, 211, 0.2) !important;
+    border: 2px solid transparent !important;
+}
+
+.stImage:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 20px rgba(127, 179, 211, 0.3) !important;
+    border-color: var(--accent-blue) !important;
+}
+
+/* Spinners personnalisés */
+.stSpinner > div {
+    border-color: var(--light-blue) var(--light-blue) var(--light-blue) var(--primary-blue) !important;
+}
+
+/* Progress bars */
+.stProgress .st-bo {
+    background-color: var(--pale-blue) !important;
+}
+
+.stProgress .st-bp {
+    background-color: var(--primary-blue) !important;
+}
+
+/* Animations keyframes */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideInLeft {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+@keyframes bounceIn {
+    0% {
+        transform: scale(0.3);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    70% {
+        transform: scale(0.9);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+/* Effet de loading global */
+.stApp.loading {
+    animation: fadeIn 0.5s ease-in;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .main .block-container {
+        padding: 1rem;
+    }
+    
+    h1 {
+        font-size: 1.8rem !important;
+    }
+    
+    .stButton > button {
+        width: 100%;
+        margin: 0.25rem 0;
+    }
+}
+
+/* Boutons de téléchargement personnalisés */
+.stDownloadButton > button {
+    background: linear-gradient(135deg, var(--light-blue) 0%, var(--accent-blue) 100%) !important;
+    color: var(--primary-dark) !important;
+    border: 2px solid var(--accent-blue) !important;
+    border-radius: 8px !important;
+    padding: 0.5rem 1rem !important;
+    font-weight: 500 !important;
+    transition: all 0.3s ease !important;
+    margin: 0.5rem 0 !important;
+}
+
+.stDownloadButton > button:hover {
+    background: linear-gradient(135deg, var(--accent-blue) 0%, var(--primary-blue) 100%) !important;
+    color: white !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(74, 144, 184, 0.3) !important;
+}
+
+/* Alertes et messages personnalisés */
+.stAlert {
+    border-radius: 8px !important;
+    border: none !important;
+    animation: slideInRight 0.4s ease-out;
+}
+
+/* Tableaux avec style */
+.stDataFrame {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    box-shadow: 0 4px 16px rgba(127, 179, 211, 0.15) !important;
+    animation: fadeInUp 0.6s ease-out;
+    border: 1px solid var(--pale-blue) !important;
+    transition: all 0.3s ease !important;
+}
+
+.stDataFrame:hover {
+    box-shadow: 0 8px 25px rgba(127, 179, 211, 0.2) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* Effets spéciaux pour les sections de résultats */
+.stSubheader {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Animation de texte pour les sous-titres */
+.stSubheader::before {
+    content: '';
+    position: absolute;
+    left: -100%;
+    bottom: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* Animation pour les colonnes de métriques groupées */
+.stColumn > div {
+    transition: all 0.3s ease;
+}
+
+.stColumn:hover > div {
+    transform: translateY(-2px);
+}
+
+/* Amélioration des effets sur les deltas des métriques */
+[data-testid="metric-container"] [data-testid="metric-delta"] {
+    transition: all 0.3s ease;
+    font-weight: 600;
+}
+
+[data-testid="metric-container"]:hover [data-testid="metric-delta"] {
+    transform: scale(1.1);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Effet spécial pour les images avec résultats */
+.stImage > div {
+    border-radius: 12px !important;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(74, 144, 184, 0.1) !important;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border: 2px solid transparent;
+}
+
+.stImage > div:hover {
+    transform: scale(1.02) rotateX(2deg);
+    box-shadow: 0 12px 40px rgba(74, 144, 184, 0.2) !important;
+    border-color: var(--accent-blue);
+}
+
+/* Checkbox et radio buttons */
+.stCheckbox > label {
+    color: var(--secondary-dark) !important;
+    font-weight: 500 !important;
+}
+
+.stRadio > label {
+    color: var(--secondary-dark) !important;
+    font-weight: 500 !important;
+}
+
+/* Text area personnalisé */
+.stTextArea > div > div > textarea {
+    border: 2px solid var(--light-blue) !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
+    transition: all 0.3s ease !important;
+}
+
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--primary-blue) !important;
+    box-shadow: 0 0 0 3px rgba(46, 89, 132, 0.2) !important;
+}
+
+/* Code blocks */
+.stCodeBlock {
+    border-radius: 8px !important;
+    border: 1px solid var(--light-blue) !important;
+    background: linear-gradient(135deg, var(--pale-blue) 0%, #ffffff 100%) !important;
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Sidebar improvements */
+.sidebar .sidebar-content .stButton > button {
+    width: 100% !important;
+    margin: 0.25rem 0 !important;
+    font-size: 0.9rem !important;
+}
+
+/* Loading states améliorés 
+.stSpinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}*/
+
+/* Tooltips personnalisés */
+[title]:hover:after {
+    content: attr(title);
+    position: absolute;
+    background: var(--primary-dark);
+    color: white;
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* Scroll personnalisé */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f8f9fa;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--accent-blue);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-blue);
+}
