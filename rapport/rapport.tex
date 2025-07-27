@@ -1,0 +1,1016 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage[T1]{fontenc}
+\usepackage[table]{xcolor}
+\usepackage{newunicodechar}
+
+\usepackage{tikz}
+\usetikzlibrary{positioning, calc, shapes.geometric}
+
+
+% Configuration listings (fusionnée proprement)
+\lstset{
+    language=Python,
+    inputencoding=utf8,
+    extendedchars=true,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{black},
+    frame=single,
+    breaklines=true,
+    showstringspaces=false,
+    literate=%
+     {é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {ë}{{\"e}}1
+     {É}{{\'E}}1 {Ê}{{\^E}}1 {È}{{\`E}}1
+     {à}{{\`a}}1 {â}{{\^a}}1 {ä}{{\"a}}1
+     {À}{{\`A}}1
+     {ù}{{\`u}}1 {û}{{\^u}}1 {ü}{{\"u}}1
+     {ô}{{\^o}}1 {ö}{{\"o}}1
+     {î}{{\^i}}1 {ï}{{\"i}}1
+     {ç}{{\c{c}}}1 {Ç}{{\c{C}}}1
+     {’}{{'}}1
+}
+
+% Configuration de la page
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\leftmark}
+\fancyhead[R]{\thepage}
+
+
+% Configuration des liens hypertexte
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    pdftitle={Rapport Projet Pathloss},
+    pdfauthor={Analyseur de Pathloss Indoor}
+}
+
+\title{
+    \huge\textbf{Analyseur de Pathloss Indoor} \\
+    \vspace{0.5cm}
+    \Large Système de Prédiction et d'Optimisation WiFi \\
+    \vspace{0.5cm}
+    \large Rapport de Projet
+}
+
+\author{
+    \textbf{Projet d'Application} \\
+    \textit{Optimisation de Réseaux WiFi Indoor}
+}
+
+\date{\today}
+
+\begin{document}
+
+% Page de couverture
+\begin{titlepage}
+    \centering
+    
+    % En-tête avec logos et informations institutionnelles
+    \begin{minipage}[t]{0.3\textwidth}
+        \centering
+        \small
+        République Tunisienne\\
+        Ministère de l'Enseignement Supérieur et\\
+        de la Recherche Scientifique\\
+        \vspace{0.3cm}
+        University of Sfax\\
+        Faculté des Sciences de Sfax
+    \end{minipage}
+    \hfill
+    % Logo central (aligné avec le texte)
+    \begin{minipage}[t]{0.2\textwidth}
+        \centering
+        \vspace{-0.5cm} % Ajustement vertical pour aligner avec le texte
+        \includegraphics[width=3.5cm]{logo.png}
+        \vspace{-0.5cm}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{0.3\textwidth}
+        \centering
+        \small
+        Département d'Informatique et des\\
+        Communications\\
+        \vspace{0.3cm}
+        Cycle d'Ingénieur en Informatique\\
+        Sciences de l'Informatique
+    \end{minipage}
+    
+    \vspace{3cm}
+    
+    {\Huge\textbf{RAPPORT DE STAGE}}
+    
+    \vspace{1cm}
+    
+    {\large\textit{Présenté à}}
+    
+    {\large Faculté des Sciences de Sfax}
+    
+    {\large Département d'Informatique et des Communications}
+    
+    \vspace{1cm}
+    
+    {\large\textit{Par}}
+    
+    {\large\textbf{Yessine Abdelmaksoud}}
+    
+    {\large\textbf{Saba Kallel}}
+    
+    \vspace{1cm}
+    
+    \rule{0.8\textwidth}{2pt}
+    
+    \vspace{0.5cm}
+    
+    {\Large\textbf{SYSTÈME INTELLIGENT DE PRÉDICTION}}
+    
+    {\Large\textbf{ET D'OPTIMISATION DE PROPAGATION}}
+    
+    {\Large\textbf{RADIO EN ENVIRONNEMENT INTÉRIEUR}}
+    
+    \vspace{0.5cm}
+    
+    \rule{0.8\textwidth}{2pt}
+    
+    \vfill
+    
+    \begin{minipage}[t]{0.5\textwidth}
+        \raggedright
+        Mr. Afif MASMOUDI \hfill Encadrant\\
+        Mr. Mohamed BEN AOUICHA \hfill Encadrant
+    \end{minipage}
+    
+    \vspace{1cm}
+    
+    \textbf{Stage réalisé à Telcotec}
+    
+    \vspace{1cm}
+    
+    {\large\today}
+    
+\end{titlepage}
+
+% Table des matières
+\newpage
+\tableofcontents
+\newpage
+
+%--------------------------------------------------
+% 1. Introduction
+%--------------------------------------------------
+\section{Introduction}
+L’évolution rapide des réseaux sans fil, conjuguée à une demande croissante de connectivité dans les environnements intérieurs (bureaux, centres commerciaux, logements, etc.), rend la prédiction et l’optimisation de la propagation radio indispensables pour assurer une couverture fiable, performante et efficiente.
+
+Dans ce contexte, ce rapport présente le développement d’un système intelligent permettant d’analyser, de prédire et d’optimiser la perte de propagation (pathloss) du signal WiFi en milieu intérieur. L’objectif est de proposer un outil capable d’intégrer les contraintes physiques de l’environnement (murs, étages) afin d’améliorer la qualité du service et d’optimiser le placement des points d’accès.
+
+\subsection{Objectifs du Projet}
+L’objectif principal de ce projet est de concevoir une application intelligente capable de :
+
+\begin{itemize}
+\item Prédire la perte de signal radio (\textit{pathloss}) dans des environnements intérieurs complexes, à partir de plans architecturaux et de paramètres physiques réels.
+\item Optimiser automatiquement le placement des points d’accès WiFi afin d’assurer une couverture optimale et de réduire les zones d’ombre.
+\item Fournir une interface utilisateur intuitive permettant de visualiser, configurer et analyser les résultats des simulations et de l’optimisation.
+\item Intégrer des algorithmes avancés pour l’évaluation et la comparaison de différentes stratégies de placement des points d’accès.
+\end{itemize}
+
+\subsection{Innovation et Intelligence Artificielle}
+Ce projet se distingue par l’intégration de techniques d’intelligence artificielle et d’optimisation automatique, permettant d'améliorer significativement la précision des prédictions et l'efficacité du déploiement WiFi :
+
+\begin{itemize}
+\item Utilisation de modèles d’apprentissage automatique pour prédire la perte de signal (\textit{pathloss}) à partir de données réelles et simulées, tenant compte de la géométrie des lieux et des caractéristiques du signal.
+
+\item Application d’algorithmes d’optimisation tels que le clustering (K-means, GMM), les approches gloutonnes, et la descente de gradient pour déterminer intelligemment le positionnement optimal des points d’accès.
+
+\item Génération de visualisations interactives en 2D et 3D, facilitant l’analyse des performances, la compréhension des résultats et la prise de décision pour l’utilisateur final.
+
+\item Automatisation complète du processus d’optimisation, de la configuration initiale à l’évaluation des performances du réseau, réduisant ainsi le besoin d’interventions manuelles.
+\end{itemize}
+
+%--------------------------------------------------
+% 2. Problématique et Architecture
+%--------------------------------------------------
+\section{Problématique et Architecture}
+
+\subsection{Défis de la Propagation Radio Intérieure}
+La propagation des ondes radio en milieu intérieur est fortement influencée par la présence d’obstacles tels que les murs, les cloisons, le mobilier, ainsi que par diverses sources d’interférences électromagnétiques. Ces éléments engendrent des phénomènes physiques complexes — réflexion, absorption, diffraction — qui rendent la prédiction de la perte de signal (\textit{pathloss}) particulièrement difficile et fortement dépendante de la configuration spatiale des lieux.
+
+% Illustration ou schéma des phénomènes de propagation (à insérer si disponible)
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{rapport/fig1.png}
+    \caption{Phénomènes de propagation radio en intérieur (réflexion, absorption, diffraction)}
+\end{figure}
+
+\subsection{Limitations des Approches Traditionnelles}
+Les méthodes classiques de prédiction du pathloss, telles que les modèles empiriques (par exemple, les modèles de Hata, Okumura, ou COST 231), ne prennent pas en compte la complexité des environnements intérieurs ni les particularités architecturales comme la disposition des murs, les matériaux ou les meubles.
+
+Ces modèles fournissent des estimations globales, souvent adaptées aux environnements extérieurs, mais s'avèrent insuffisamment précises pour des scénarios intérieurs spécifiques nécessitant une modélisation fine et personnalisée.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Critère} & \textbf{Modèles Empiriques} & \textbf{Modèles basés IA } \\
+\hline
+Prise en compte des murs & Non & Oui \\
+\hline
+Adaptabilité au bâtiment & Faible & Élevée \\
+\hline
+Précision en indoor & Moyenne à faible & Élevée \\
+\hline
+Coût de calcul & Faible & Modéré à élevé \\
+\hline
+Visualisation spatiale & Non & Oui \\
+\hline
+\end{tabular}
+\caption{Comparaison entre les approches empiriques classiques et les approches intelligentes}
+\end{table}
+
+\subsection{Solution Proposée}
+Le système développé dans le cadre de ce projet adopte une approche intelligente et entièrement automatisée, combinant l’analyse d’images (plans architecturaux), l’apprentissage automatique et des techniques d’optimisation algorithmique. L’objectif est de prédire avec précision la propagation du signal WiFi en environnement intérieur et de proposer un placement optimal des points d’accès.
+Cette solution s’adapte dynamiquement à la configuration réelle des lieux ainsi qu’aux besoins spécifiques des utilisateurs (zones prioritaires, densité de couverture, etc.).
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[node distance=2cm]
+        % Modules principaux
+        \node[rectangle, draw, fill=blue!20] (app) {Interface Streamlit};
+        \node[rectangle, draw, fill=green!20, below left of=app] (calc2d) {Pathloss 2D};
+        \node[rectangle, draw, fill=green!20, below right of=app] (calc3d) {Pathloss 3D};
+        \node[rectangle, draw, fill=orange!20, below of=calc2d] (heat2d) {Heatmap 2D};
+        \node[rectangle, draw, fill=orange!20, below of=calc3d] (heat3d) {Heatmap 3D};
+        \node[rectangle, draw, fill=red!20, below of=heat2d] (opt2d) {Optimisation 2D};
+        \node[rectangle, draw, fill=red!20, below of=heat3d] (opt3d) {Optimisation 3D};
+        \node[rectangle, draw, fill=purple!20, below right of=opt2d] (ml) {IA \& ML};
+        
+        % Connexions
+        \draw[->] (app) -- (calc2d);
+        \draw[->] (app) -- (calc3d);
+        \draw[->] (calc2d) -- (heat2d);
+        \draw[->] (calc3d) -- (heat3d);
+        \draw[->] (heat2d) -- (opt2d);
+        \draw[->] (heat3d) -- (opt3d);
+        \draw[->] (ml) -- (calc2d);
+        \draw[->] (ml) -- (calc3d);
+
+    \end{tikzpicture}
+    \caption{Architecture modulaire du système}
+\end{figure} 
+
+\subsection{Architecture du Système}
+L’architecture du système repose sur une structure modulaire, composée de plusieurs blocs interconnectés, permettant une prédiction précise et une optimisation efficace de la couverture WiFi en environnement intérieur. Chaque module joue un rôle spécifique dans le pipeline global :
+
+\begin{itemize}
+\item \textbf{Module de traitement d'image} : analyse du plan et extraction des murs/obstacles.
+\item \textbf{Module de prédiction du pathloss} : calcul basé sur des modèles de machine learning (ML) et/ou des équations physiques (2D/3D).
+\item \textbf{Module d'optimisation} : placement automatique des points d’accès selon les zones à couvrir.
+\item \textbf{Interface utilisateur} : configuration, visualisation des heatmaps et analyse des performances.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \resizebox{\textwidth}{!}{%
+    \begin{tikzpicture}[node distance=1.1cm and 1.8cm, every node/.style={font=\small}]
+        % Entrées
+        \node[rectangle, draw, fill=blue!20] (input2d) {Image 2D (Plan)};
+        \node[rectangle, draw, fill=blue!20, right=6.5cm of input2d] (input3d) {Image 2D (Plan) + Infos Étages};
+
+        % Pipeline 2D
+        \node[rectangle, draw, fill=green!20, below=of input2d] (feat2d) {Extraction Features};
+        \node[rectangle, draw, fill=green!20, below=of feat2d] (ml2d) {Modèle ML 2D};
+        \node[rectangle, draw, fill=orange!20, below=of ml2d] (path2d) {Calcul Pathloss 2D};
+        \node[rectangle, draw, fill=orange!20, below=of path2d] (heat2d) {Heatmap 2D};
+        \node[rectangle, draw, fill=red!20, below left=1.2cm and -0.3cm of heat2d] (optcov2d) {Optimisation Couverture};
+        \node[rectangle, draw, fill=red!20, below right=1.2cm and -0.3cm of heat2d] (optpos2d) {Optimisation Récepteurs};
+        \node[rectangle, draw, fill=cyan!20, below=1.2cm of $(optcov2d)!0.5!(optpos2d)$] (vis2d) {Visualisation des resulats 2D};
+
+        % Pipeline 3D
+        \node[rectangle, draw, fill=green!20, below=of input3d] (vol3d) {Conversion 2D→3D};
+        \node[rectangle, draw, fill=green!20, below=of vol3d] (ml3d) {Modèle ML 3D};
+        \node[rectangle, draw, fill=orange!20, below=of ml3d] (path3d) {Calcul Pathloss 3D};
+        \node[rectangle, draw, fill=orange!20, below=of path3d] (heat3d) {Heatmap 3D};
+        \node[rectangle, draw, fill=red!20, below left=1.2cm and -0.3cm of heat3d] (optcov3d) {Optimisation Couverture};
+        \node[rectangle, draw, fill=red!20, below right=1.2cm and -0.3cm of heat3d] (optpos3d) {Optimisation Récepteurs};
+        \node[rectangle, draw, fill=cyan!20, below=1.2cm of $(optcov3d)!0.5!(optpos3d)$] (vis3d) {Visualisation des resulats 3D};
+
+        % Connexions 2D
+        \draw[->] (input2d) -- (feat2d);
+        \draw[->] (feat2d) -- (ml2d);
+        \draw[->] (ml2d) -- (path2d);
+        \draw[->] (path2d) -- (heat2d);
+        \draw[->] (heat2d) -- (optcov2d);
+        \draw[->] (heat2d) -- (optpos2d);
+        \draw[->] (optcov2d) -- (vis2d);
+        \draw[->] (optpos2d) -- (vis2d);
+
+        % Connexions 3D
+        \draw[->] (input3d) -- (vol3d);
+        \draw[->] (vol3d) -- (ml3d);
+        \draw[->] (ml3d) -- (path3d);
+        \draw[->] (path3d) -- (heat3d);
+        \draw[->] (heat3d) -- (optcov3d);
+        \draw[->] (heat3d) -- (optpos3d);
+        \draw[->] (optcov3d) -- (vis3d);
+        \draw[->] (optpos3d) -- (vis3d);
+
+    \end{tikzpicture}
+    }
+    \caption{Architecture fonctionnelle du système de prédiction et d'optimisation WiFi (2D et 3D)}
+\end{figure}
+
+
+
+
+
+%--------------------------------------------------
+% 2.5 Modules Fonctionnels
+%--------------------------------------------------
+\subsection{Modules Fonctionnels}
+
+\subsubsection{Module de Traitement d’Image (ImageProcessor)}
+
+Le module \texttt{ImageProcessor} constitue une composante essentielle du système proposé. Il permet d’extraire automatiquement les murs, obstacles et structures pertinentes à partir d’un plan d’architecture en 2D image PNG , en vue de modéliser fidèlement l’environnement intérieur pour les calculs de propagation radio.
+
+\vspace{0.3em}
+\noindent\textbf{ Pipeline de traitement automatique (\texttt{process\_image}):}
+\begin{enumerate}
+    \item \textbf{Conversion en niveaux de gris} : passage de l’image RGB à un format simplifié pour l’analyse.
+    \item \textbf{Binarisation par seuillage} : distinction murs/fond par seuil fixe (127), avec inversion pour que les murs soient représentés en blanc.
+    \item \textbf{Nettoyage morphologique} : utilisation d’opérations de \texttt{closing} et \texttt{opening} pour éliminer le bruit et combler les petits trous.
+    \item \textbf{Détection intelligente des murs} : via la fonction \texttt{\_detect\_walls\_intelligent()}, qui analyse les contours, filtre les objets par aire, périmètre et compacité, et valide leur épaisseur.
+    \item \textbf{Génération du masque final} : image binaire exploitable par les modules de pathloss et d’optimisation.
+\end{enumerate}
+
+\vspace{0.3em}
+\noindent\textbf{Comptage des obstacles entre deux points (\texttt{count\_walls\_between\_points})} :
+\begin{itemize}
+    \item Utilisation de l’algorithme de Bresenham pour tracer une ligne discrète entre deux points donnés.
+    \item Comptage des transitions pixel blanc ↔ noir, correspondant aux murs traversés.
+    \item Résultat utilisé pour pondérer la perte de signal dans les modèles de pathloss.
+\end{itemize}
+
+
+\vspace{0.3em}
+\noindent Grâce à ces étapes, le module produit un masque fiable et précis des murs, qui constitue une base exploitable par les algorithmes de propagation (2D et 3D) et d’optimisation des points d’accès.
+
+\begin{figure}[H]
+    \centering
+    %\includegraphics[width=0.65\textwidth]{imageprocessor_mask_example.png}
+    \caption{Exemple de masque binaire des murs obtenu à partir d’un plan 2D}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{rapport/image-proccesor.png}
+    \caption{Extraction du masque des murs à partir du plan 2D initial}
+\end{figure}
+
+\subsubsection{Calculateurs de Pathloss}
+
+Les calculateurs de pathloss (2D et 3D) forment un module central du système de prédiction radio. Ils s'appuient sur une architecture hybride intelligente combinant modèles physiques classiques et modèles d'apprentissage automatique (ML), afin d’estimer avec précision l’affaiblissement du signal radio entre un émetteur et un récepteur en environnement intérieur.
+
+\paragraph{Architecture Hybride}
+Le système donne la priorité à la prédiction ML lorsque le modèle est disponible, avec un mécanisme de secours automatique utilisant des formules théoriques robustes (comme Friis) en cas d’échec ou d’anomalie.
+
+\begin{itemize}
+    \item \textbf{Prédiction prioritaire} : Modèle ML (XGBoost, Régression)
+    \item \textbf{Fallback théorique} : Modèle de Friis + pertes dues aux murs/étages
+\end{itemize}
+
+\paragraph{PathlossCalculator (2D)}
+Ce composant évalue la perte de signal en 2D selon les caractéristiques suivantes :
+\begin{itemize}
+    \item \textbf{Entrées} : distance, nombre de murs, fréquence
+    \item \textbf{Modèle ML} : \texttt{pathloss\_predictor.pkl} (XGBoost)
+\end{itemize}
+
+\paragraph{PathlossCalculator3D}
+Version étendue du calculateur 2D avec support complet de la 3D :
+\begin{itemize}
+    \item \textbf{Entrées} : distance 3D, nombre de murs, différence d'étages, fréquence
+    \item \textbf{Modèle ML} : \texttt{xgboost\_radio\_propagation\_model.pkl}
+\end{itemize}
+
+\subsubsection{Modules de Visualisation}
+
+Les modules de visualisation assurent une représentation graphique claire et intuitive des plans, des points d’accès, des récepteurs, ainsi que des trajets de propagation radio en 2D et 3D. Ils jouent un rôle essentiel dans l’interprétation des résultats d’optimisation et dans l’analyse de la couverture radio.
+
+Le système intègre deux composants spécialisés :
+\begin{itemize}
+    \item \texttt{Visualizer2D} : rendu du plan d’étage avec points d'accès, récepteurs et obstacles.
+    \item \texttt{Visualizer3D} : modélisation interactive en 3D du bâtiment avec visualisation des couches, étages et propagation.
+\end{itemize}
+
+Ces visualisations permettent notamment :
+\begin{itemize}
+    \item L’affichage des trajets de propagation du signal
+    \item La superposition des obstacles détectés (murs, séparations)
+    \item La localisation précise des émetteurs et récepteurs
+    \item L’analyse de la couverture par étage et en volume
+\end{itemize}
+
+% Exemple de visualisation 2D
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{rapport/pathloss2d.png}
+    \caption{Visualisation 2D du plan avec points d'accès et récepteurs}
+\end{figure}
+
+% Exemple de visualisation 3D
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{rapport/pathloss3d.png}
+    \caption{Visualisation 3D interactive du bâtiment et de la couverture radio}
+\end{figure}
+\subsection{Génération de Cartes de Couverture}
+Les modules \texttt{HeatmapGenerator2D} et \texttt{HeatmapGenerator3D} sont responsables de la visualisation de la couverture radio à travers des cartes de chaleur (heatmaps). Ils traduisent les résultats du calcul de pathloss en représentations graphiques, facilitant l’analyse de la qualité de couverture dans les environnements complexes.
+
+\subsubsection{Générateurs de Heatmaps}
+
+Les générateurs produisent des cartes de couverture en 2D et en 3D, mettant en évidence les zones à forte réception et celles avec une perte de signal importante. Ces visualisations permettent d’identifier rapidement les zones à optimiser, de valider l'efficacité du placement des points d'accès, et d’évaluer la couverture globale du bâtiment.
+
+
+
+\paragraph{Fonctionnalités principales (2D)}
+
+\begin{enumerate}
+    \item \texttt{generate\_heatmap\_2d()} :
+    \begin{itemize}
+        \item Génère une carte de chaleur du pathloss sur une grille 2D configurable.
+        \item Masque les murs 
+        \item Combine les signaux multi-émetteurs pour afficher le meilleur signal par point.
+        \item Superpose la carte au plan architectural.
+    \end{itemize}
+    
+    \item \texttt{generate\_coverage\_zones()} :
+\end{enumerate}
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{rapport/heaqtmap2d.png}
+    \caption{Exemple de carte de couverture 2D (heatmap)}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{rapport/couverture.png}
+    \caption{Carte de couverture en zones (Excellent, Bon, Faible, Mauvais)}
+\end{figure}
+
+
+\paragraph{Fonctionnalités principales (3D)}
+
+\begin{enumerate}
+    \item \texttt{generate\_voxel\_grid()} 
+    \begin{itemize}
+        \item Création d’une grille 3D (voxels) pour modéliser l’environnement intérieur.
+        \item Calcul du pathloss 3D pour chaque voxel, en tenant compte :
+        \begin{itemize}
+            \item de la distance euclidienne 3D,
+            \item du nombre de murs projetés en 2D,
+            \item de la différence d’étages.
+        \end{itemize}
+    \end{itemize}
+    
+    \item \texttt{visualize\_voxel\_heatmap()} :
+\end{enumerate}
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{rapport/heatmap3d.png}
+    \caption{Visualisation 3D interactive de la couverture WiFi}
+\end{figure}
+
+
+
+\section{Optimisation du Placement des Points d’Accès WiFi}
+
+Le système développé implémente une architecture d’optimisation multi-algorithmes permettant de déterminer automatiquement le nombre, la position optimale et la stratégie de placement des points d'accès WiFi dans un environnement intérieur en 2d et  3D.
+
+\subsection{Objectifs de l’optimisation}
+
+L’optimisation vise à :
+\begin{itemize}
+    \item Maximiser la couverture radio dans l’ensemble du bâtiment.
+    \item Réduire le nombre de points d’accès nécessaires.
+    \item Respecter les contraintes spatiales (murs, étages, limites du bâtiment).
+\end{itemize}
+
+\subsection{Stratégies d’Optimisation de Couverture}
+
+Deux approches complémentaires sont mises en œuvre :
+
+\subsubsection{Optimisation de la Couverture Maximale}
+
+Cette stratégie repose sur une recherche intelligente du nombre optimal de points d’accès et de leur emplacement pour couvrir un maximum de l’environnement.
+
+\paragraph{Méthodologie :}
+\begin{itemize}
+    \item Génération d’une grille 3D de points candidats (voxels).
+    \item Simulation du pathloss pour chaque position potentielle.
+    \item Évaluation de la couverture marginale apportée par chaque point d’accès.
+    \item Ajout séquentiel jusqu’à atteindre un seuil de couverture (ex : 90\%).
+\end{itemize}
+
+\paragraph{Critères de scoring :}
+\begin{itemize}
+    \item Couverture totale atteinte (en \% de l’environnement).
+    \item Nombre de points d’accès utilisés.
+    \item Efficacité énergétique et redondance minimale.
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption={Extrait du scoring}, label={lst:scoring}]
+if coverage_percent < min_coverage_percent:
+    score = coverage_score * 2.0
+else:
+    score = 1.0 + coverage_score - (num_aps - 1) * 0.05
+\end{lstlisting}
+
+
+
+\subsubsection{Modules d’Optimisation Intégrés}
+
+\begin{itemize}
+    \item \textbf{GMMOptimizer3 :} Modélisation de la densité des utilisateurs via un mélange de gaussiennes (GMM).
+    \item \textbf{GreedyOptimizer :} Algorithme glouton pour ajouter les PA un par un en maximisant la couverture marginale.
+   \item \textbf{K-Means :} Positionne les points d’accès au centre de sphères de couverture, en regroupant les récepteurs par proximité géographique.
+    \item \textbf{AutoOptimizer :} Utilise la descente de gradient pour minimiser le pathloss global.
+\end{itemize}
+
+\subsubsection{Comparaison des Algorithmes}
+
+\begin{itemize}
+    \item \textbf{GMM :} Représentation probabiliste avancée.
+    \item \textbf{Greedy :} Simple, rapide et efficace dans les cas pratiques.
+    \item \textbf{K-Means (si utilisé) :} Partitionnement géométrique rapide.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Comparaison des algorithmes d'optimisation}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Algorithme} & \textbf{Couverture (\%)} & \textbf{\# PA} & \textbf{Temps (s)} \\
+\hline
+GMM                  & 80.3                     & 4              & 5                 \\
+Greedy               & 66.9                     & 3              & 30                 \\
+K-Means              & 61.6                     & 3              & 4                 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{rapport/optimisation_2d_2400MHz.png}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{rapport/optimisation2dinfo.png}
+    \caption{Exemple de heatmap obtenue après optimisation en 2D}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{rapport/opt3d.png}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{rapport/info3dopt.png}
+    \caption{Exemple de couverture obtenue après optimisation en 3D}
+\end{figure}
+
+\subsubsection{Optimisation par Position des Émetteurs}
+
+Dans cette stratégie, les positions des points d’accès sont contraintes ou suggérées (infrastructure existante, contraintes d’installation). L’algorithme évalue alors la configuration la plus efficace parmi ces emplacements.
+
+\paragraph{Méthodes utilisées :}
+\begin{itemize}
+    \item Descente de gradient sur le pathloss.
+    \item Filtrage des positions invalides (ex. derrière un mur).
+    \item Comparaison de toutes les combinaisons viables.
+\end{itemize}
+
+
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.1\textwidth]{rapport/optauto2d.png}
+    \caption{Exemple de visualization de postion optimale de point d'acces après optimisation en 2D}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{rapport/autoopt3d.png}
+    \caption{Exemple de visualization de postion optimale de point d'acces après optimisation en 3D}
+\end{figure}
+
+
+
+%--------------------------------------------------
+% 3. Modèles Mathématiques et Intelligence Artificielle
+%--------------------------------------------------
+\section{Modèles Mathématiques et Intelligence Artificielle}
+
+\subsection{Modèles de Propagation Radio}
+La prédiction de la perte de signal (\textit{pathloss}) repose sur des modèles mathématiques décrivant l’affaiblissement des ondes radio en fonction de la distance, des obstacles et de la configuration de l’environnement intérieur.
+
+\subsubsection{Modèle de Friis}
+Le modèle de Friis constitue une base pour la propagation en espace libre. Il permet d'estimer la perte de signal en fonction de la distance $d$ entre l’émetteur et le récepteur, et de la fréquence $f$ :
+\begin{equation}
+    PL_{Friis} = 20 \log_{10}(d) + 20 \log_{10}(f) - 147.55
+\end{equation}
+avec $d$ en mètres et $f$ en MHz.
+
+\subsubsection{Modèle ITU Indoor}
+Le modèle ITU Indoor est conçu pour les environnements clos (bureaux, appartements, bâtiments) et prend en compte l’atténuation liée aux murs et aux étages :
+\begin{equation}
+    PL_{ITU} = 20 \log_{10}(f) + N \log_{10}(d) + L_{walls} + L_{floors} - 28
+\end{equation}
+où :
+\begin{itemize}
+    \item $N$ : facteur d’environnement dépendant du type de bâtiment.
+    \item $L_{walls}$ : perte due aux murs.
+    \item $L_{floors}$ : perte due aux étages.
+\end{itemize}
+
+\subsubsection{Modèle avec Atténuation par Obstacles (personnalisé)}
+Le système développé implémente un modèle personnalisé, adapté aux environnements complexes, combinant les effets de distance, murs et étages :
+\begin{equation}
+    PL_{total} = PL_{Friis} + N_{walls} \times A_{wall} + N_{floors} \times A_{floor}
+\end{equation}
+avec :
+\begin{itemize}
+    \item $N_{walls}$ : nombre de murs traversés (détecté par le module \texttt{ImageProcessor})
+    \item $A_{wall}$ : atténuation par mur (par défaut 6 dB, configurable selon le matériau)
+    \item $N_{floors}$ : différence d’étages entre émetteur et récepteur
+    \item $A_{floor}$ : atténuation par étage (par défaut 15 dB)
+\end{itemize}
+
+Ce modèle est intégré dans les modules \texttt{PathlossCalculator} (2D) et \texttt{PathlossCalculator3D} (3D) du système.
+
+\subsection{Modèle Machine Learning}
+\subsubsection{Description du Dataset}
+% ...à placer dans la section Résultats ou Modélisation du rapport...
+
+Le dataset utilisé pour l'entraînement du modèle XGBoost est intitulé 
+
+\texttt{indoor\_pathloss\_dataset.csv}. Il contient des mesures simulées ou réelles du pathloss radio en environnement intérieur, avec les variables suivantes :
+\begin{itemize}
+    \item \textbf{distance} : Distance entre l'émetteur et le récepteur (en mètres).
+    \item \textbf{numwall} : Nombre de murs traversés par le trajet radio.
+    \item \textbf{etage} : Différence d'étage entre l'émetteur et le récepteur.
+    \item \textbf{frequence} : Fréquence du signal (en MHz).
+    \item \textbf{pathloss} : Atténuation du signal mesurée ou simulée (en dB).
+\end{itemize}
+
+Le dataset comporte \textbf{plusieurs milliers d'échantillons} couvrant une large gamme de configurations (distances, obstacles, fréquences). Avant l'entraînement, une analyse exploratoire a été réalisée :
+\begin{itemize}
+    \item Vérification de l'absence de valeurs manquantes.
+    \item Statistiques descriptives (moyenne, écart-type, min, max) pour chaque variable.
+    \item Visualisation des distributions (histogrammes, barplots).
+    \item Analyse de la corrélation entre les variables et le pathloss.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{rapport/infodataset.png}
+    \caption{informations sur les donnnees}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{rapport/output.png}
+    \caption{Analyse de dataset}
+\end{figure}
+
+\subsubsection{Modèle de Régression Linéaire}
+La régression linéaire permet de modéliser le pathloss en fonction de plusieurs variables explicatives : distance, nombre de murs, étage, fréquence. L'équation obtenue est :
+\begin{equation}
+    pathloss = 60.454 + 0.446 \times distance + 7.664 \times numwall + 18.920 \times etage + 0.002 \times frequence
+\end{equation}
+Ce modèle offre une interprétabilité directe des coefficients et permet d'identifier l'impact de chaque paramètre sur le pathloss.
+
+\textbf{Performance du modèle linéaire 3D :}
+\begin{itemize}
+    \item RMSE : 18.16 dB
+    \item MAE : 12.10 dB
+    \item $R^2$ : 0.8294
+    \item Features utilisées : distance, numwall, etage, frequence
+\end{itemize}
+
+\subsubsection{Modèle XGBoost}
+XGBoost est un algorithme d'apprentissage automatique basé sur les arbres de décision, optimisé pour la performance et la gestion de grandes quantités de données. Il permet de capturer des relations non linéaires et des interactions complexes entre les variables.
+
+\textbf{Optimisation des hyperparamètres :} GridSearchCV a été utilisé pour rechercher les meilleurs paramètres du modèle XGBoost.
+\begin{itemize}
+    \item Meilleurs paramètres 3D :  learning\_rate=0.1, max\_depth=5, n\_estimators=100, reg\_alpha=0, reg\_lambda=1.5, subsample=1.0
+\end{itemize}
+
+
+Les modèles entraînés sont sauvegardés dans \texttt{pathloss\_predictor.pkl} et \texttt{xgboost\_radio\_propagation\_model.pkl}.
+
+\textbf{Performance du modèle XGBoost 3D :}
+\begin{itemize}
+    \item RMSE : 16.08 dB
+    \item MAE : 8.99 dB
+    \item $R^2$ : 0.8662
+    \item Features utilisées : distance, numwall, etage, frequence
+\end{itemize}
+
+\textbf{Performance du modèle XGBoost 2D :}
+\begin{itemize}
+    \item RMSE Test : 5.92 dB
+    \item MAE Test : 4.15 dB
+    \item $R^2$ Test : 0.8515
+\end{itemize}
+
+\textbf{Fallback intelligent :} Le système bascule automatiquement vers les modèles théoriques si les modèles ML ne sont pas disponibles, garantissant la robustesse du système.
+
+\subsubsection{Performance des Modèles}
+La comparaison des modèles montre que XGBoost surpasse la régression linéaire en termes de précision et de robustesse, notamment pour la prédiction du pathloss en 3D :
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Métrique & Régression Linéaire & XGBoost \\
+\midrule
+$R^2$ & 0.8294 & 0.8693 \\
+RMSE & 18.16 & 15.90 \\
+MAE & 12.10 & 8.86 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Analyse des corrélations :}
+\begin{itemize}
+    \item pathloss : 1.000
+    \item etage : 0.706
+    \item numwall : 0.531
+    \item distance : 0.355
+    \item frequence : 0.039
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{rapport/output2.png}
+    \caption{visualisation des evaluation du model}
+\end{figure}
+%--------------------------------------------------
+% 3.5 Algorithmes d’Optimisation
+%--------------------------------------------------
+\subsection{Algorithmes d’Optimisation}
+L’optimisation du placement des points d’accès repose sur plusieurs algorithmes complémentaires, chacun adapté à des scénarios et contraintes différentes.
+
+%-------------------------------
+% Optimiseur Glouton
+%-------------------------------
+\subsubsection{Optimiseur Glouton (GreedyOptimizer)}
+L'algorithme glouton implémenté dans \texttt{GreedyOptimizer} place les points d'accès séquentiellement en choisissant à chaque étape la position qui maximise la couverture additionnelle.
+\begin{lstlisting}[language=Python,caption={Pseudo-code Algorithme Glouton}]
+Entrée : points à couvrir, grille de positions, seuil de couverture
+Sortie : positions optimales des APs
+
+while couverture < seuil_min and nb_aps < max_aps:
+    meilleur_gain = 0
+    meilleure_position = None
+    for position in positions_candidates:
+        gain = calculer_gain_couverture(position, points_non_couverts)
+        if gain > meilleur_gain:
+            meilleur_gain = gain
+            meilleure_position = position
+    placer_ap(meilleure_position)
+    mettre_a_jour_couverture()
+\end{lstlisting}
+\textbf{Logique :} L'algorithme évalue chaque position candidate sur une grille et sélectionne celle qui couvre le plus de nouveaux points non encore couverts.
+
+
+%-------------------------------
+% Optimiseur GMM
+%-------------------------------
+\subsubsection{Optimiseur GMM (GMM\_Optimizer)}
+L'optimiseur GMM implémenté dans \texttt{gmm\_optimizer.py} utilise une approche probabiliste pour modéliser la distribution des récepteurs et placer les APs dans les zones de plus forte densité.
+\begin{lstlisting}[language=Python,caption={Pseudo-code GMM Optimizer}]
+Entrée : points de couverture, nombre d'APs, grille_info
+Sortie : positions optimales des APs
+
+# Clustering des points de couverture
+gmm = GaussianMixture(n_components=num_aps)
+gmm.fit(coverage_points)
+
+# Placement initial aux centres des clusters
+ap_positions = []
+for center in gmm.means_:
+    adjusted_pos = adjust_for_walls(center, walls_detected)
+    ap_positions.append(adjusted_pos)
+
+# Optimisation fine des positions
+optimized_positions = fine_tune_positions(ap_positions)
+\end{lstlisting}
+\textbf{Logique :} Le GMM identifie les zones de forte densité de récepteurs, place les APs aux centres des distributions, puis ajuste les positions pour éviter les obstacles détectés.
+
+\paragraph{Formule mathématique :}
+\begin{equation}
+p(x) = \sum_{k=1}^{K} \pi_k \mathcal{N}(x | \mu_k, \Sigma_k)
+\end{equation}
+
+
+
+%-------------------------------
+% Optimiseur K-means
+%-------------------------------
+\subsubsection{Optimiseur K-means (KMeansOptimizer)}
+L'optimiseur K-means regroupe les récepteurs en $K$ clusters sphériques et place un point d'accès au centre de chaque cluster.
+\begin{lstlisting}[language=Python,caption={Pseudo-code K-means Optimizer}]
+Entrée : points de couverture, nombre d'APs
+Sortie : positions optimales des APs
+
+for num_clusters in range(1, max_clusters + 1):
+    kmeans = KMeans(
+        n_clusters=num_clusters,
+        init='k-means++',
+        max_iter=500,
+        n_init=20,
+        random_state=42,
+        tol=1e-6,
+        algorithm='elkan'
+    )
+    kmeans.fit(points_array)
+
+    centers = kmeans.cluster_centers_
+    for center in centers:
+        adjusted_pos = adjust_position_to_avoid_walls(center)
+        adjusted_centers.append(adjusted_pos)
+\end{lstlisting}
+\textbf{Logique :} Le K-means répartit les récepteurs en groupes sphériques denses et place les APs au centre de gravité de chaque cluster.
+
+\paragraph{Formules mathématiques :}
+\begin{itemize}
+  \item \textbf{Objectif à minimiser (inertie) :}
+  \begin{equation}
+  J = \sum_{i=1}^{K} \sum_{x \in C_i} \| x - \mu_i \|^2
+  \end{equation}
+  \item \textbf{Mise à jour des centres :}
+  \begin{equation}
+  \mu_i = \frac{1}{|C_i|} \sum_{x \in C_i} x
+  \end{equation}
+  \item \textbf{Distance 3D :}
+  \begin{equation}
+  d(p_1, p_2) = \sqrt{(x_1 - x_2)^2 + (y_1 - y_2)^2 + (z_1 - z_2)^2}
+  \end{equation}
+  \item \textbf{Critère d'arrêt :}
+  \begin{equation}
+  \frac{|J_t - J_{t-1}|}{J_{t-1}} < \text{tol}
+  \end{equation}
+\end{itemize}
+
+\textbf{Avantages :} Initialisation intelligente (K-means ++), robustesse aux données denses, adaptation aux contraintes physiques (évite les murs).
+
+%-------------------------------
+% Optimiseur Auto (Descente de Gradient)
+%-------------------------------
+\subsubsection{Optimiseur Automatique (AutoOptimizer)}
+L'optimiseur automatique implémenté dans \texttt{auto\_optimizer\_3d.py} utilise une approche hybride combinant le regroupement spatial par K-Means et une adaptation locale pour minimiser le pathloss entre les points d’accès et les récepteurs dans un environnement 3D complexe.
+
+\begin{lstlisting}[language=Python,caption={Pseudo-code AutoOptimizer}]
+Entrée : récepteurs, plan, murs détectés, paramètres
+Sortie : positions optimales des APs
+
+# Étape 1 : Estimation du nombre d’APs requis (distance max entre récepteurs)
+num_aps = determine_optimal_num_aps(receivers)
+
+# Étape 2 : Clustering des récepteurs avec KMeans
+kmeans = KMeans(n_clusters=num_aps)
+centers = kmeans.fit(receivers).cluster_centers_
+
+# Étape 3 : Ajustement des positions pour éviter les murs
+for center in centers:
+    pos = find_nearest_valid_position(center)
+    access_points.append(pos)
+\end{lstlisting}
+
+\textbf{Logique :} L’algorithme utilise K-Means pour regrouper les récepteurs par proximité spatiale. Les centres de clusters sont ensuite ajustés pour éviter les obstacles détectés (murs).
+La couverture est ensuite évaluée en calculant le pathloss moyen, maximal et minimal.
+
+\textbf{Contraintes prises en compte :}
+\begin{itemize}
+    \item Évitement automatique des murs (recherche spirale autour des positions initiales)
+    \item Respect des limites du plan (dimensions et hauteur du bâtiment)
+    \item Gestion des étages (conversion de hauteur en étage pour l'atténuation)
+\end{itemize}
+
+
+\textbf{Sorties du module :}
+\begin{itemize}
+    \item Liste des APs optimaux : coordonnées $(x, y, z)$ + puissance
+    \item Moyenne, minimum et maximum de pathloss
+    \item Statistiques de couverture (qualité du signal en fonction du pathloss)
+\end{itemize}
+
+
+%--------------------------------------------------
+% 4. Implémentation et Visualisation
+%--------------------------------------------------
+\section{Implémentation}
+
+\subsection{Technologies Utilisées}
+Le projet s’appuie sur un ensemble de technologies modernes pour garantir la performance, la modularité et la facilité d’utilisation :
+\begin{itemize}
+    \item \textbf{Python} : Langage principal pour le développement des modules d’analyse, de prédiction et d’optimisation.
+    \item \textbf{Streamlit} : Framework pour la création d’interfaces web interactives et la visualisation des résultats.
+    \item \textbf{NumPy, Pandas} : Manipulation et traitement des données.
+    \item \textbf{Scikit-learn, XGBoost} : Implémentation des modèles d’apprentissage automatique et des algorithmes d’optimisation.
+    \item \textbf{Plotly} : Visualisation graphique interactive des résultats, génération des heatmaps 2D et des modèles 3D (bâtiment, voxels, trajets radio).
+    \item \textbf{Matplotlib} : Visualisation complémentaire pour certaines courbes et analyses statistiques.
+    \item \textbf{OpenCV} : Traitement d'image pour l'extraction des murs et obstacles à partir des plans avec opérations morphologiques.
+    \item \textbf{scikit-image} : Traitement d'images avancé pour la squelettisation et la détection de contours.
+\end{itemize}
+
+\subsection{Interface Utilisateur}
+L’interface utilisateur, développée avec Streamlit, permet de :
+\begin{itemize}
+    \item Charger un plan d’appartement (image PNG).
+    \item Configurer les paramètres de simulation (hauteur , longeur, largeur, ,nb detage ,nombre d’APs, puissance, seuil de couverture).
+    \item Lancer la prédiction du pathloss et l’optimisation automatique.
+    \item Visualiser les résultats sous forme de heatmaps 2D et de voxels 3D.
+    \item Exporter les statistiques et les positions optimales des points d’accès.
+\end{itemize}
+L’interface est conçue pour être intuitive et guider l’utilisateur à chaque étape du processus.
+
+%--------------------------------------------------
+% 5. Résultats et Applications
+%--------------------------------------------------
+\section{Résultats et Applications}
+
+\subsection{Performance du Système}
+Le système développé offre une prédiction du pathloss précise et une optimisation efficace du placement des points d’accès. Les performances des modèles (régression linéaire, XGBoost) ont été évaluées sur des jeux de données réels et simulés, avec des métriques telles que RMSE, MAE et $R^2$. L’optimisation automatique permet de réduire les zones d’ombre et d’améliorer la couverture globale.
+
+\begin{itemize}
+    \item \textbf{Précision de la prédiction} : RMSE inférieur à 16 dB avec XGBoost 3D.
+    \item \textbf{Optimisation} : Réduction du pathloss moyen et du nombre d’APs nécessaires.
+    \item \textbf{Visualisation} : Cartes de couverture et modèles 3D interactifs pour l’analyse.
+\end{itemize}
+
+\subsection{Cas d’Usage}
+Le système peut être appliqué à divers scénarios :
+\begin{itemize}
+    \item Optimisation du WiFi dans des appartements, bureaux, hôpitaux, écoles.
+    \item Simulation de la couverture avant installation réelle.
+    \item Analyse d’impact des obstacles et des étages sur la propagation radio.
+    \item Aide à la décision pour les installateurs et ingénieurs réseaux.
+\end{itemize}
+
+\subsection{Validation Expérimentale}
+La validation a été réalisée par comparaison des prédictions avec des mesures réelles et des benchmarks. Les résultats montrent une bonne concordance entre les prédictions et les mesures, avec une amélioration notable de la couverture après optimisation automatique. Les heatmaps et visualisations 3D confirment la pertinence des placements proposés.
+
+%--------------------------------------------------
+% 6. Conclusion et Perspectives
+%--------------------------------------------------
+\section{Conclusion et Perspectives}
+
+\subsection{Contributions}
+Ce projet propose une solution complète pour la prédiction et l’optimisation de la couverture WiFi en environnement intérieur, intégrant traitement d’image, modèles ML, algorithmes d’optimisation et visualisation avancée.
+
+\subsection{Impact}
+L’outil développé facilite la planification des réseaux sans fil, réduit les coûts d’installation et améliore la qualité de service pour les utilisateurs finaux. Il constitue une avancée pour l’ingénierie des réseaux indoor.
+
+%--------------------------------------------------
+% 7. Limitations et Perspectives d’Amélioration
+%--------------------------------------------------
+\section{Limitations et Perspectives d’Amélioration}
+
+\subsection{Limitations Actuelles}
+Malgré ses performances, le système présente certaines limites :
+\begin{itemize}
+    \item Sensibilité aux erreurs d’extraction des murs sur les plans complexes.
+    \item Modélisation simplifiée des matériaux et des interférences.
+    \item Nécessité de données d’entrée précises
+\end{itemize}
+
+\subsection{Perspectives d’Évolution}
+Des améliorations sont envisagées :
+\begin{itemize}
+    \item Intégration de modèles de propagation plus avancés (ray tracing, deep learning).
+    \item Prise en compte des interférences et du trafic réseau.
+    \item Extension à d’autres technologies (5G, LoRa, Zigbee).
+    \item Automatisation de la collecte de données et calibration sur site.
+\end{itemize}
+\end{document}
