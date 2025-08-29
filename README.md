@@ -41,6 +41,13 @@ Ce projet développe une application intelligente capable de :
 - **K-means Clustering** : Regroupement géométrique optimisé
 - **Optimiseur Automatique** : Analyse géométrique + clustering adaptatif
 
+## Watch this video
+
+[![Watch the video on YouTube](https://img.youtube.com/vi/Kkl2KkTb_hc/0.jpg)](https://www.youtube.com/watch?v=Kkl2KkTb_hc)
+
+Or click the link to view it: [YouTube Video](https://www.youtube.com/watch?v=Kkl2KkTb_hc)
+
+
 ## 🏗️ Architecture du Système
 
 ```
